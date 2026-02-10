@@ -29,6 +29,7 @@ export function createSlateEditor(config: SlateEditorConfig): SlateEditor {
   const editor = createEditor()
 
   editor.decoratedRanges = []
+  editor.preBatchDecorationRanges = new Map()
   editor.decoratorState = {}
   editor.blockIndexMap = new Map<string, number>()
   editor.history = {undos: [], redos: []}
@@ -38,6 +39,9 @@ export function createSlateEditor(config: SlateEditorConfig): SlateEditor {
   editor.remotePatches = []
   editor.undoStepId = undefined
   editor.value = [placeholderBlock]
+
+  editor.splitContext = null
+  editor.mergeContext = null
 
   editor.isDeferringMutations = false
   editor.isNormalizingNode = false
