@@ -7,6 +7,7 @@ import {
   type BlockRenderProps,
   type BlockStyleRenderProps,
   type EditorEmittedEvent,
+  type EditorSelection,
   type PortableTextBlock,
   type RangeDecoration,
   type RenderAnnotationFunction,
@@ -75,6 +76,7 @@ import {Spinner} from './primitives/spinner'
 import {ToggleButton} from './primitives/toggle-button'
 import {Tooltip} from './primitives/tooltip'
 import {RangeDecorationButton} from './range-decoration-button'
+import {ReanchorButtons} from './reanchor-simulation'
 import {SlashCommandPickerPlugin} from './slash-command-picker'
 import {
   SuggestionPanel,
@@ -88,6 +90,10 @@ export function Editor(props: {
   rangeDecorations: RangeDecoration[]
   remoteFixUp: boolean
   onToggleRemoteFixUp: () => void
+  onReanchor: (
+    decoration: RangeDecoration,
+    newSelection: EditorSelection,
+  ) => void
 }) {
   const value = useSelector(props.editorRef, (s) => s.context.value)
   const keyGenerator = useSelector(
@@ -167,6 +173,7 @@ export function Editor(props: {
             readOnly={readOnly}
             remoteFixUp={props.remoteFixUp}
             onToggleRemoteFixUp={props.onToggleRemoteFixUp}
+            onReanchor={props.onReanchor}
           />
         </EditorProvider>
       </ErrorBoundary>
@@ -186,6 +193,10 @@ function EditorWithSuggestions(props: {
   readOnly: boolean
   remoteFixUp: boolean
   onToggleRemoteFixUp: () => void
+  onReanchor: (
+    decoration: RangeDecoration,
+    newSelection: EditorSelection,
+  ) => void
 }) {
   const {featureFlags} = props
   const suggestionService = useSuggestionService()
@@ -257,6 +268,8 @@ function EditorWithSuggestions(props: {
         remoteFixUp={props.remoteFixUp}
         onToggleRemoteFixUp={props.onToggleRemoteFixUp}
         suggestionService={suggestionService}
+        rangeDecorations={props.rangeDecorations}
+        onReanchor={props.onReanchor}
       />
     </Container>
   )
@@ -612,6 +625,11 @@ function EditorFooter(props: {
     toggle: () => void
     suggestions: Array<{id: string}>
   }
+  rangeDecorations: RangeDecoration[]
+  onReanchor: (
+    decoration: RangeDecoration,
+    newSelection: EditorSelection,
+  ) => void
 }) {
   const editor = useEditor()
   const patchesActive = useSelector(props.editorRef, (s) =>
@@ -674,6 +692,10 @@ function EditorFooter(props: {
                 : 'Remote fix-up OFF — decorations accept truncated positions'}
             </Tooltip>
           </TooltipTrigger>
+          <ReanchorButtons
+            rangeDecorations={props.rangeDecorations}
+            onReanchor={props.onReanchor}
+          />
           <SuggestionServiceToggle
             enabled={props.suggestionService.enabled}
             suggestionCount={props.suggestionService.suggestions.length}

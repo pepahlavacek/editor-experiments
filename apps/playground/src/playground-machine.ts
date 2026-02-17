@@ -1,5 +1,6 @@
 import {
   keyGenerator,
+  type EditorSelection,
   type MutationEvent,
   type PatchesEvent,
   type PortableTextBlock,
@@ -289,7 +290,12 @@ export const playgroundMachine = setup({
           type: 'toggle feature flag'
           flag: keyof PlaygroundFeatureFlags
         }
-      | {type: 'toggle remote fix-up'},
+      | {type: 'toggle remote fix-up'}
+      | {
+          type: 'reanchor decoration'
+          decorationPayloadId: string
+          newSelection: EditorSelection
+        },
     input: {} as {
       editorIdGenerator: Generator<string, string>
     },
@@ -414,6 +420,21 @@ export const playgroundMachine = setup({
         })
       },
     }),
+    'reanchor decoration': assign({
+      rangeDecorations: ({context, event}) => {
+        assertEvent(event, 'reanchor decoration')
+
+        return context.rangeDecorations.map((rangeDecoration) => {
+          if (rangeDecoration.payload?.id === event.decorationPayloadId) {
+            return {
+              ...rangeDecoration,
+              selection: event.newSelection,
+            }
+          }
+          return rangeDecoration
+        })
+      },
+    }),
   },
   actors: {
     'editor machine': editorMachine,
@@ -468,6 +489,9 @@ export const playgroundMachine = setup({
       actions: assign({
         remoteFixUp: ({context}) => !context.remoteFixUp,
       }),
+    },
+    'reanchor decoration': {
+      actions: ['reanchor decoration'],
     },
   },
   entry: [raise({type: 'add editor'}), raise({type: 'add editor'})],

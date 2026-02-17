@@ -1,4 +1,6 @@
+import type {EditorSelection, RangeDecoration} from '@portabletext/editor'
 import {useSelector} from '@xstate/react'
+import {useCallback} from 'react'
 import {Editor} from './editor'
 import {PlaygroundFeatureFlagsContext} from './feature-flags'
 import {Inspector} from './inspector'
@@ -22,6 +24,19 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
     (s) => s.context.remoteFixUp,
   )
 
+  const onReanchor = useCallback(
+    (decoration: RangeDecoration, newSelection: EditorSelection) => {
+      const payloadId = decoration.payload?.id as string | undefined
+      if (!payloadId) return
+      props.playgroundRef.send({
+        type: 'reanchor decoration',
+        decorationPayloadId: payloadId,
+        newSelection,
+      })
+    },
+    [props.playgroundRef],
+  )
+
   return (
     <div className="p-3 md:p-4 flex-1 min-w-0">
       <div
@@ -42,6 +57,7 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
                 onToggleRemoteFixUp={() =>
                   props.playgroundRef.send({type: 'toggle remote fix-up'})
                 }
+                onReanchor={onReanchor}
               />
             ))}
           </PlaygroundFeatureFlagsContext.Provider>
