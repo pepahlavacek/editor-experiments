@@ -35,10 +35,12 @@ export function ReplaceSuggestionComponent(
 ): ReactElement<any> {
   return (
     <span
+      data-testid={`suggestion-${props.suggestionId}`}
       data-suggestion-id={props.suggestionId}
       data-suggestion-type="replace"
     >
       <span
+        data-testid={`suggestion-${props.suggestionId}-deleted`}
         data-suggestion-role="deleted-text"
         style={{
           textDecoration: 'line-through',
@@ -50,6 +52,7 @@ export function ReplaceSuggestionComponent(
       </span>
       <span
         contentEditable={false}
+        data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
           color: '#16a34a',
@@ -86,10 +89,15 @@ export function InsertSuggestionComponent(
   },
 ): ReactElement<any> {
   return (
-    <span data-suggestion-id={props.suggestionId} data-suggestion-type="insert">
+    <span
+      data-testid={`suggestion-${props.suggestionId}`}
+      data-suggestion-id={props.suggestionId}
+      data-suggestion-type="insert"
+    >
       {props.children}
       <span
         contentEditable={false}
+        data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
           color: '#16a34a',
@@ -121,8 +129,13 @@ export function DeleteSuggestionComponent(
   },
 ): ReactElement<any> {
   return (
-    <span data-suggestion-id={props.suggestionId} data-suggestion-type="delete">
+    <span
+      data-testid={`suggestion-${props.suggestionId}`}
+      data-suggestion-id={props.suggestionId}
+      data-suggestion-type="delete"
+    >
       <span
+        data-testid={`suggestion-${props.suggestionId}-deleted`}
         data-suggestion-role="deleted-text"
         style={{
           textDecoration: 'line-through',
