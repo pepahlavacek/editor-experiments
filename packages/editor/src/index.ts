@@ -96,3 +96,12 @@ export type {
 } from './types/editor'
 export type {HotkeyOptions} from './types/options'
 export type {AnnotationPath, BlockPath, ChildPath} from './types/paths'
+export type {
+  DeleteSuggestion,
+  InsertSuggestion,
+  ReplaceSuggestion,
+  Suggestion,
+  SuggestionConfig,
+  SuggestionEvent,
+  SuggestionOnMovedDetails,
+} from './types/suggestion'
