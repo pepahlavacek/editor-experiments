@@ -14,12 +14,17 @@ import type {PropsWithChildren, ReactElement} from 'react'
  * @alpha
  */
 
+/**
+ * Base props for suggestion components.
+ * @alpha
+ */
 export interface SuggestionComponentProps extends PropsWithChildren {
   suggestionId: string
 }
 
 /**
  * Renders replaced text with strikethrough + inline replacement preview.
+ * @alpha
  */
 export function ReplaceSuggestionComponent(
   props: SuggestionComponentProps & {
@@ -71,6 +76,7 @@ export function ReplaceSuggestionComponent(
  *
  * Children contain the zero-width space that keeps Slate happy.
  * The inserted text is injected as a non-editable inline element.
+ * @alpha
  */
 export function InsertSuggestionComponent(
   props: SuggestionComponentProps & {
@@ -106,6 +112,7 @@ export function InsertSuggestionComponent(
 
 /**
  * Renders deleted text with strikethrough.
+ * @alpha
  */
 export function DeleteSuggestionComponent(
   props: SuggestionComponentProps & {

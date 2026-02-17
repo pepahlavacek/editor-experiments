@@ -39,7 +39,7 @@ import {
   WandSparklesIcon,
   XIcon,
 } from 'lucide-react'
-import {useContext, useEffect, useState, type JSX} from 'react'
+import {useContext, useEffect, useMemo, useState, type JSX} from 'react'
 import {TooltipTrigger} from 'react-aria-components'
 import {tv} from 'tailwind-variants'
 import './editor.css'
@@ -48,6 +48,7 @@ import {EmojiPickerPlugin} from './emoji-picker'
 import {
   EditorFeatureFlagsContext,
   PlaygroundFeatureFlagsContext,
+  type EditorFeatureFlags,
 } from './feature-flags'
 import {highlightMachine} from './highlight-json-machine'
 import {MentionPickerPlugin} from './mention-picker'
@@ -75,6 +76,11 @@ import {ToggleButton} from './primitives/toggle-button'
 import {Tooltip} from './primitives/tooltip'
 import {RangeDecorationButton} from './range-decoration-button'
 import {SlashCommandPickerPlugin} from './slash-command-picker'
+import {
+  SuggestionPanel,
+  SuggestionServiceToggle,
+  useSuggestionService,
+} from './suggestion-panel'
 import {PortableTextToolbar} from './toolbar/portable-text-toolbar'
 
 export function Editor(props: {
@@ -153,69 +159,106 @@ export function Editor(props: {
               </PortableTextToolbar>
             </div>
           ) : null}
-          <Container className="flex flex-col overflow-clip">
-            {featureFlags.emojiPickerPlugin ? <EmojiPickerPlugin /> : null}
-            {featureFlags.mentionPickerPlugin ? <MentionPickerPlugin /> : null}
-            {featureFlags.slashCommandPlugin ? (
-              <SlashCommandPickerPlugin />
-            ) : null}
-            {featureFlags.codeEditorPlugin ? <CodeEditorPlugin /> : null}
-            {featureFlags.linkPlugin ? <PasteLinkPlugin /> : null}
-            {featureFlags.imageDeserializerPlugin ? (
-              <ImageDeserializerPlugin />
-            ) : null}
-            {featureFlags.htmlDeserializerPlugin ? (
-              <HtmlDeserializerPlugin />
-            ) : null}
-            {featureFlags.textFileDeserializerPlugin ? (
-              <TextFileDeserializerPlugin />
-            ) : null}
-            {featureFlags.markdownPlugin ? (
-              <MarkdownShortcutsPlugin {...markdownShortcutsPluginProps} />
-            ) : null}
-            {featureFlags.oneLinePlugin ? <OneLinePlugin /> : null}
-            {featureFlags.typographyPlugin ? (
-              <TypographyPlugin
-                guard={createDecoratorGuard({
-                  decorators: ({context}) =>
-                    context.schema.decorators.flatMap((decorator) =>
-                      decorator.name === 'code' ? [] : [decorator.name],
-                    ),
-                })}
-              />
-            ) : null}
-            <div className="flex gap-2 items-center">
-              <ErrorBoundary
-                fallbackProps={{area: 'PortableTextEditable'}}
-                fallback={ErrorScreen}
-                onError={console.error}
-              >
-                <EditorFeatureFlagsContext.Provider value={featureFlags}>
-                  <PortableTextEditable
-                    className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''}`}
-                    rangeDecorations={props.rangeDecorations}
-                    renderAnnotation={renderAnnotation}
-                    renderBlock={RenderBlock}
-                    renderChild={renderChild}
-                    renderDecorator={renderDecorator}
-                    renderListItem={renderListItem}
-                    renderPlaceholder={renderPlaceholder}
-                    renderStyle={renderStyle}
-                  />
-                </EditorFeatureFlagsContext.Provider>
-              </ErrorBoundary>
-              {loading ? <Spinner /> : null}
-            </div>
-            <EditorFooter
-              editorRef={props.editorRef}
-              readOnly={readOnly}
-              remoteFixUp={props.remoteFixUp}
-              onToggleRemoteFixUp={props.onToggleRemoteFixUp}
-            />
-          </Container>
+          <EditorWithSuggestions
+            editorRef={props.editorRef}
+            rangeDecorations={props.rangeDecorations}
+            featureFlags={featureFlags}
+            loading={loading}
+            readOnly={readOnly}
+            remoteFixUp={props.remoteFixUp}
+            onToggleRemoteFixUp={props.onToggleRemoteFixUp}
+          />
         </EditorProvider>
       </ErrorBoundary>
     </div>
+  )
+}
+
+/**
+ * Inner component that lives inside EditorProvider, enabling the suggestion demo hook.
+ * Merges suggestion decorations with manual range decorations.
+ */
+function EditorWithSuggestions(props: {
+  editorRef: EditorActorRef
+  rangeDecorations: RangeDecoration[]
+  featureFlags: EditorFeatureFlags
+  loading: boolean
+  readOnly: boolean
+  remoteFixUp: boolean
+  onToggleRemoteFixUp: () => void
+}) {
+  const {featureFlags} = props
+  const suggestionService = useSuggestionService()
+
+  // Merge manual range decorations with suggestion decorations
+  const allDecorations = useMemo(
+    () => [...props.rangeDecorations, ...suggestionService.decorations],
+    [props.rangeDecorations, suggestionService.decorations],
+  )
+
+  return (
+    <Container className="flex flex-col overflow-clip">
+      {featureFlags.emojiPickerPlugin ? <EmojiPickerPlugin /> : null}
+      {featureFlags.mentionPickerPlugin ? <MentionPickerPlugin /> : null}
+      {featureFlags.slashCommandPlugin ? <SlashCommandPickerPlugin /> : null}
+      {featureFlags.codeEditorPlugin ? <CodeEditorPlugin /> : null}
+      {featureFlags.linkPlugin ? <PasteLinkPlugin /> : null}
+      {featureFlags.imageDeserializerPlugin ? (
+        <ImageDeserializerPlugin />
+      ) : null}
+      {featureFlags.htmlDeserializerPlugin ? <HtmlDeserializerPlugin /> : null}
+      {featureFlags.textFileDeserializerPlugin ? (
+        <TextFileDeserializerPlugin />
+      ) : null}
+      {featureFlags.markdownPlugin ? (
+        <MarkdownShortcutsPlugin {...markdownShortcutsPluginProps} />
+      ) : null}
+      {featureFlags.oneLinePlugin ? <OneLinePlugin /> : null}
+      {featureFlags.typographyPlugin ? (
+        <TypographyPlugin
+          guard={createDecoratorGuard({
+            decorators: ({context}) =>
+              context.schema.decorators.flatMap((decorator) =>
+                decorator.name === 'code' ? [] : [decorator.name],
+              ),
+          })}
+        />
+      ) : null}
+      <div className="flex gap-2 items-center">
+        <ErrorBoundary
+          fallbackProps={{area: 'PortableTextEditable'}}
+          fallback={ErrorScreen}
+          onError={console.error}
+        >
+          <EditorFeatureFlagsContext.Provider value={featureFlags}>
+            <PortableTextEditable
+              className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''}`}
+              rangeDecorations={allDecorations}
+              renderAnnotation={renderAnnotation}
+              renderBlock={RenderBlock}
+              renderChild={renderChild}
+              renderDecorator={renderDecorator}
+              renderListItem={renderListItem}
+              renderPlaceholder={renderPlaceholder}
+              renderStyle={renderStyle}
+            />
+          </EditorFeatureFlagsContext.Provider>
+        </ErrorBoundary>
+        {props.loading ? <Spinner /> : null}
+      </div>
+      <SuggestionPanel
+        service={suggestionService.service}
+        suggestions={suggestionService.suggestions}
+        enabled={suggestionService.enabled}
+      />
+      <EditorFooter
+        editorRef={props.editorRef}
+        readOnly={props.readOnly}
+        remoteFixUp={props.remoteFixUp}
+        onToggleRemoteFixUp={props.onToggleRemoteFixUp}
+        suggestionService={suggestionService}
+      />
+    </Container>
   )
 }
 
@@ -564,6 +607,11 @@ function EditorFooter(props: {
   readOnly: boolean
   remoteFixUp: boolean
   onToggleRemoteFixUp: () => void
+  suggestionService: {
+    enabled: boolean
+    toggle: () => void
+    suggestions: Array<{id: string}>
+  }
 }) {
   const editor = useEditor()
   const patchesActive = useSelector(props.editorRef, (s) =>
@@ -626,6 +674,11 @@ function EditorFooter(props: {
                 : 'Remote fix-up OFF — decorations accept truncated positions'}
             </Tooltip>
           </TooltipTrigger>
+          <SuggestionServiceToggle
+            enabled={props.suggestionService.enabled}
+            suggestionCount={props.suggestionService.suggestions.length}
+            onToggle={props.suggestionService.toggle}
+          />
         </div>
         <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
         <div className="flex items-center gap-0.5">
