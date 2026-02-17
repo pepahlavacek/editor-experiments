@@ -105,3 +105,4 @@ export type {
   SuggestionEvent,
   SuggestionOnMovedDetails,
 } from './types/suggestion'
+export {suggestionsToDecorations} from './suggestions/suggestions-to-decorations'
