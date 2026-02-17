@@ -31,6 +31,13 @@ const makeCollapsedSelection = (
 ): NonNullable<EditorSelection> =>
   makeSelection(blockKey, spanKey, offset, offset)
 
+/** Helper to get first decoration with assertion */
+function first(config: SuggestionConfig) {
+  const decorations = suggestionsToDecorations(config)
+  expect(decorations).toHaveLength(1)
+  return decorations[0]!
+}
+
 describe('suggestionsToDecorations', () => {
   it('returns empty array for empty suggestions', () => {
     const config: SuggestionConfig = {suggestions: []}
@@ -45,8 +52,7 @@ describe('suggestionsToDecorations', () => {
       selection: makeSelection('b1', 's1', 5, 10),
       replacementText: 'world',
     }
-    const config: SuggestionConfig = {suggestions: [suggestion]}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion]})
 
     expect(decoration.id).toBe('replace-1')
     expect(decoration.selection).toBe(suggestion.selection)
@@ -64,8 +70,7 @@ describe('suggestionsToDecorations', () => {
       selection: makeCollapsedSelection('b1', 's1', 5),
       insertedText: 'hello ',
     }
-    const config: SuggestionConfig = {suggestions: [suggestion]}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion]})
 
     expect(decoration.id).toBe('insert-1')
     expect(decoration.selection).toBe(suggestion.selection)
@@ -85,8 +90,7 @@ describe('suggestionsToDecorations', () => {
       id: 'delete-1',
       selection: makeSelection('b1', 's1', 0, 5),
     }
-    const config: SuggestionConfig = {suggestions: [suggestion]}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion]})
 
     expect(decoration.id).toBe('delete-1')
     expect(decoration.selection).toBe(suggestion.selection)
@@ -116,13 +120,12 @@ describe('suggestionsToDecorations', () => {
         selection: makeSelection('b2', 's1', 0, 3),
       },
     ]
-    const config: SuggestionConfig = {suggestions}
-    const decorations = suggestionsToDecorations(config)
+    const decorations = suggestionsToDecorations({suggestions})
 
     expect(decorations).toHaveLength(3)
-    expect(decorations[0].id).toBe('r1')
-    expect(decorations[1].id).toBe('i1')
-    expect(decorations[2].id).toBe('d1')
+    expect(decorations[0]!.id).toBe('r1')
+    expect(decorations[1]!.id).toBe('i1')
+    expect(decorations[2]!.id).toBe('d1')
   })
 
   it('wires up onMoved callback when config.onMoved is provided', () => {
@@ -133,8 +136,7 @@ describe('suggestionsToDecorations', () => {
       selection: makeSelection('b1', 's1', 0, 5),
       replacementText: 'test',
     }
-    const config: SuggestionConfig = {suggestions: [suggestion], onMoved}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion], onMoved})
 
     expect(decoration.onMoved).toBeDefined()
 
@@ -163,8 +165,7 @@ describe('suggestionsToDecorations', () => {
       selection: makeSelection('b1', 's1', 0, 5),
       replacementText: 'test',
     }
-    const config: SuggestionConfig = {suggestions: [suggestion]}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion]})
 
     expect(decoration.onMoved).toBeUndefined()
   })
@@ -176,12 +177,11 @@ describe('suggestionsToDecorations', () => {
       id: 'd1',
       selection: makeSelection('b1', 's1', 0, 5),
     }
-    const config: SuggestionConfig = {suggestions: [suggestion], onAction}
-    const [decoration] = suggestionsToDecorations(config)
+    const decoration = first({suggestions: [suggestion], onAction})
 
     // The onAction is wired into the component — we verify the component exists
     // and the payload carries the suggestion ID for identification
     expect(decoration.component).toBeDefined()
-    expect(decoration.payload?.suggestionId).toBe('d1')
+    expect(decoration.payload?.['suggestionId']).toBe('d1')
   })
 })
