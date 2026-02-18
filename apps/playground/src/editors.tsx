@@ -5,6 +5,7 @@ import {Editor} from './editor'
 import {PlaygroundFeatureFlagsContext} from './feature-flags'
 import {Inspector} from './inspector'
 import type {PlaygroundActorRef} from './playground-machine'
+import {useSharedSuggestionService} from './suggestion-panel'
 
 export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
   const showInspector = useSelector(props.playgroundRef, (s) =>
@@ -23,6 +24,9 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
     props.playgroundRef,
     (s) => s.context.remoteFixUp,
   )
+
+  // Shared suggestion service — all editors see the same suggestions
+  const suggestionService = useSharedSuggestionService()
 
   const onReanchor = useCallback(
     (decoration: RangeDecoration, newSelection: EditorSelection) => {
@@ -58,6 +62,7 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
                   props.playgroundRef.send({type: 'toggle remote fix-up'})
                 }
                 onReanchor={onReanchor}
+                suggestionService={suggestionService}
               />
             ))}
           </PlaygroundFeatureFlagsContext.Provider>

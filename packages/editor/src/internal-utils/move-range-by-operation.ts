@@ -1,15 +1,49 @@
-import {Point, type Node, type Operation, type Range} from 'slate'
+import {Point, Range, type Node, type Operation} from 'slate'
 import type {MergeContext, SplitContext} from '../types/slate-editor'
 
 // Mock node for insert_node operations - only path matters for Point.transform
 const mockNode = {children: []} as unknown as Node
 
+/**
+ * Move a range by an operation, using 'inward' affinity.
+ *
+ * This matches Slate's Range.transform default behavior:
+ * - Forward range: anchor='forward', focus='backward'
+ * - Backward range: anchor='backward', focus='forward'
+ * - Collapsed range: both use the same affinity to avoid crossing
+ *
+ * The 'inward' affinity means insertions at the range boundary do NOT
+ * expand the range. Without this, typing at the exact focus offset of
+ * a decoration would absorb the new text into the decorated range.
+ */
 export function moveRangeByOperation(
   range: Range,
   operation: Operation,
 ): Range | null {
-  const anchor = Point.transform(range.anchor, operation)
-  const focus = Point.transform(range.focus, operation)
+  const isCollapsed = Range.isCollapsed(range)
+  const isForward = Range.isForward(range)
+
+  // Inward affinity: anchor pushes inward, focus pushes inward
+  // For forward ranges: anchor='forward', focus='backward'
+  // For backward ranges: anchor='backward', focus='forward'
+  // For collapsed: both same direction to avoid crossing
+  let anchorAffinity: 'forward' | 'backward'
+  let focusAffinity: 'forward' | 'backward'
+
+  if (isForward) {
+    anchorAffinity = 'forward'
+    focusAffinity = isCollapsed ? 'forward' : 'backward'
+  } else {
+    anchorAffinity = 'backward'
+    focusAffinity = isCollapsed ? 'backward' : 'forward'
+  }
+
+  const anchor = Point.transform(range.anchor, operation, {
+    affinity: anchorAffinity,
+  })
+  const focus = Point.transform(range.focus, operation, {
+    affinity: focusAffinity,
+  })
 
   if (anchor === null || focus === null) {
     return null

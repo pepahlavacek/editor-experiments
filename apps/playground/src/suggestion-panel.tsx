@@ -2,6 +2,7 @@ import {
   suggestionsToDecorations,
   useEditor,
   useEditorSelector,
+  type Editor,
   type EditorSelection,
   type RangeDecoration,
   type Suggestion,
@@ -15,12 +16,51 @@ import {ToggleButton} from './primitives/toggle-button'
 import {Tooltip} from './primitives/tooltip'
 
 /**
- * Hook that manages a FakeSuggestionService instance and converts
- * its suggestions into RangeDecorations for the editor.
+ * Apply a suggestion's change to the editor document.
+ *
+ * - Insert: place cursor at suggestion position, insert text
+ * - Delete: select the suggestion range, delete (insert empty text)
+ * - Replace: select the suggestion range, insert replacement text
  */
-export function useSuggestionService(): {
+/**
+ * Apply a suggestion's change to the editor document.
+ *
+ * - Insert: place cursor at suggestion position, insert text
+ * - Delete: select the suggestion range, delete (insert empty text)
+ * - Replace: select the suggestion range, insert replacement text
+ */
+function applySuggestionToEditor(editor: Editor, suggestion: Suggestion) {
+  switch (suggestion.type) {
+    case 'insert':
+      // Place cursor at the insert position (collapsed selection)
+      editor.send({type: 'focus'})
+      editor.send({type: 'select', at: suggestion.selection})
+      editor.send({type: 'insert.text', text: suggestion.insertedText})
+      break
+    case 'delete':
+      // Select the range and delete it
+      editor.send({type: 'focus'})
+      editor.send({type: 'select', at: suggestion.selection})
+      editor.send({type: 'insert.text', text: ''})
+      break
+    case 'replace':
+      // Select the range and replace with new text
+      editor.send({type: 'focus'})
+      editor.send({type: 'select', at: suggestion.selection})
+      editor.send({type: 'insert.text', text: suggestion.replacementText})
+      break
+  }
+}
+
+/**
+ * Hook that manages a shared FakeSuggestionService instance.
+ * Does NOT require EditorProvider — can be called at any level.
+ *
+ * Returns the service, raw suggestions, and enabled state.
+ * Each editor creates its own decorations via useSuggestionDecorations().
+ */
+export function useSharedSuggestionService(): {
   service: FakeSuggestionService
-  decorations: RangeDecoration[]
   suggestions: Suggestion[]
   enabled: boolean
   toggle: () => void
@@ -52,25 +92,6 @@ export function useSuggestionService(): {
     }
   }, [service])
 
-  const onAction = useCallback(
-    (event: {action: 'accept' | 'reject'; suggestion: Suggestion}) => {
-      if (event.action === 'accept') {
-        service.acceptSuggestion(event.suggestion.id)
-      } else {
-        service.rejectSuggestion(event.suggestion.id)
-      }
-    },
-    [service],
-  )
-
-  const decorations = useMemo(() => {
-    if (!enabled || suggestions.length === 0) return []
-    return suggestionsToDecorations({
-      suggestions,
-      onAction,
-    })
-  }, [enabled, suggestions, onAction])
-
   const toggle = useCallback(() => {
     setEnabled((prev) => {
       if (prev) {
@@ -81,7 +102,46 @@ export function useSuggestionService(): {
     })
   }, [service])
 
-  return {service, decorations, suggestions, enabled, toggle}
+  return {service, suggestions, enabled, toggle}
+}
+
+/**
+ * Hook that creates RangeDecorations from shared suggestions.
+ * Must be called inside an EditorProvider — uses useEditor() to
+ * apply accepted suggestions to the document.
+ *
+ * Each editor instance gets its own decorations with its own onAction
+ * callback, so accept/reject applies to the correct editor.
+ */
+export function useSuggestionDecorations(props: {
+  service: FakeSuggestionService
+  suggestions: Suggestion[]
+  enabled: boolean
+}): RangeDecoration[] {
+  const editor = useEditor()
+
+  const onAction = useCallback(
+    (event: {action: 'accept' | 'reject'; suggestion: Suggestion}) => {
+      if (event.action === 'accept') {
+        // Apply the suggestion's change to the document BEFORE removing it.
+        // This uses the local editor instance, so the change applies to
+        // whichever editor the user clicked accept in.
+        applySuggestionToEditor(editor, event.suggestion)
+        props.service.acceptSuggestion(event.suggestion.id)
+      } else {
+        props.service.rejectSuggestion(event.suggestion.id)
+      }
+    },
+    [editor, props.service],
+  )
+
+  return useMemo(() => {
+    if (!props.enabled || props.suggestions.length === 0) return []
+    return suggestionsToDecorations({
+      suggestions: props.suggestions,
+      onAction,
+    })
+  }, [props.enabled, props.suggestions, onAction])
 }
 
 /**
@@ -223,6 +283,11 @@ export function SuggestionPanel(props: {
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
           Suggestion Service
         </span>
+        {!selection && (
+          <span className="text-[10px] text-gray-400 italic">
+            Click in editor to place cursor
+          </span>
+        )}
         {pendingCount > 0 && (
           <span className="text-[10px] text-amber-500 font-mono">
             {pendingCount} pending…

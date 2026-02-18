@@ -16,6 +16,7 @@ import {
   type RenderListItemFunction,
   type RenderPlaceholderFunction,
   type RenderStyleFunction,
+  type Suggestion,
 } from '@portabletext/editor'
 import {MarkdownShortcutsPlugin} from '@portabletext/plugin-markdown-shortcuts'
 import {OneLinePlugin} from '@portabletext/plugin-one-line'
@@ -46,6 +47,7 @@ import {tv} from 'tailwind-variants'
 import './editor.css'
 import {EditorSettingsPopover} from './editor-settings-popover'
 import {EmojiPickerPlugin} from './emoji-picker'
+import type {FakeSuggestionService} from './fake-suggestion-service'
 import {
   EditorFeatureFlagsContext,
   PlaygroundFeatureFlagsContext,
@@ -81,7 +83,7 @@ import {SlashCommandPickerPlugin} from './slash-command-picker'
 import {
   SuggestionPanel,
   SuggestionServiceToggle,
-  useSuggestionService,
+  useSuggestionDecorations,
 } from './suggestion-panel'
 import {PortableTextToolbar} from './toolbar/portable-text-toolbar'
 
@@ -94,6 +96,12 @@ export function Editor(props: {
     decoration: RangeDecoration,
     newSelection: EditorSelection,
   ) => void
+  suggestionService: {
+    service: FakeSuggestionService
+    suggestions: Suggestion[]
+    enabled: boolean
+    toggle: () => void
+  }
 }) {
   const value = useSelector(props.editorRef, (s) => s.context.value)
   const keyGenerator = useSelector(
@@ -174,6 +182,7 @@ export function Editor(props: {
             remoteFixUp={props.remoteFixUp}
             onToggleRemoteFixUp={props.onToggleRemoteFixUp}
             onReanchor={props.onReanchor}
+            suggestionService={props.suggestionService}
           />
         </EditorProvider>
       </ErrorBoundary>
@@ -197,14 +206,28 @@ function EditorWithSuggestions(props: {
     decoration: RangeDecoration,
     newSelection: EditorSelection,
   ) => void
+  suggestionService: {
+    service: FakeSuggestionService
+    suggestions: Suggestion[]
+    enabled: boolean
+    toggle: () => void
+  }
 }) {
-  const {featureFlags} = props
-  const suggestionService = useSuggestionService()
+  const {featureFlags, suggestionService} = props
+
+  // Each editor creates its own decorations from the shared suggestions.
+  // The onAction callback uses this editor's useEditor() instance,
+  // so accept/reject applies to the correct editor.
+  const suggestionDecorations = useSuggestionDecorations({
+    service: suggestionService.service,
+    suggestions: suggestionService.suggestions,
+    enabled: suggestionService.enabled,
+  })
 
   // Merge manual range decorations with suggestion decorations
   const allDecorations = useMemo(
-    () => [...props.rangeDecorations, ...suggestionService.decorations],
-    [props.rangeDecorations, suggestionService.decorations],
+    () => [...props.rangeDecorations, ...suggestionDecorations],
+    [props.rangeDecorations, suggestionDecorations],
   )
 
   return (
@@ -267,7 +290,11 @@ function EditorWithSuggestions(props: {
         readOnly={props.readOnly}
         remoteFixUp={props.remoteFixUp}
         onToggleRemoteFixUp={props.onToggleRemoteFixUp}
-        suggestionService={suggestionService}
+        suggestionService={{
+          enabled: suggestionService.enabled,
+          toggle: suggestionService.toggle,
+          suggestions: suggestionService.suggestions,
+        }}
         rangeDecorations={props.rangeDecorations}
         onReanchor={props.onReanchor}
       />

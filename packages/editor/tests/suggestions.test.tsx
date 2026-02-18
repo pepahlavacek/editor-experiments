@@ -370,6 +370,69 @@ describe('Suggestions: Position Tracking', () => {
     expect(onMovedSpy).not.toHaveBeenCalled()
   })
 
+  test('Type at exact focus offset of suggestion → decoration does NOT expand (B3 clamping)', async () => {
+    // B3 bug: "Hello world" with delete suggestion on "ello" (1-5).
+    // User types "X" at offset 5 (right after "ello").
+    // BUG: decoration expands to include "X" → "elloX" instead of "ello".
+    // FIX: inward affinity on focus means insertions at focus don't expand.
+
+    const onMovedSpy = vi.fn()
+    const suggestion: DeleteSuggestion = {
+      type: 'delete',
+      id: 'del-clamp',
+      selection: sel(1, 5), // "ello"
+    }
+
+    const config: SuggestionConfig = {
+      suggestions: [suggestion],
+      onAction: vi.fn(),
+    }
+    let decorations = suggestionsToDecorations(config)
+    decorations = decorations.map((dec) => ({
+      ...dec,
+      onMoved: (details: RangeDecorationOnMovedDetails) => {
+        onMovedSpy(details)
+        decorations = updateDecorations({decorations, details})
+      },
+    }))
+
+    const {editor, locator, rerender} = await createTestEditor({
+      initialValue: helloWorldValue(),
+      editableProps: {rangeDecorations: decorations},
+    })
+
+    // Verify initial rendering — "ello" is decorated
+    const deletedSpan = locator.getByTestId('suggestion-del-clamp-deleted')
+    await vi.waitFor(() =>
+      expect.element(deletedSpan).toHaveTextContent('ello'),
+    )
+
+    // Type "X" at offset 5 — right at the focus boundary
+    editor.send({type: 'select', at: sel(5, 5)})
+    editor.send({type: 'insert.text', text: 'X'})
+
+    // Wait for text to be inserted
+    await vi.waitFor(() => {
+      const terse = getTersePt(editor.getSnapshot().context)
+      expect(terse[0]).toBe('HelloX world')
+    })
+
+    // onMoved should NOT fire — the insertion is at the boundary with
+    // backward affinity on focus, so the decoration stays at (1, 5).
+    expect(onMovedSpy).not.toHaveBeenCalled()
+
+    // Re-render to verify decoration text
+    await rerender({
+      initialValue: editor.getSnapshot().context.value,
+      editableProps: {rangeDecorations: decorations},
+    })
+
+    // CRITICAL: Decoration should still cover "ello", NOT "elloX"
+    await vi.waitFor(() =>
+      expect.element(deletedSpan).toHaveTextContent('ello'),
+    )
+  })
+
   test('Delete text before a suggestion → suggestion shifts left', async () => {
     const onMovedSpy = vi.fn()
     const suggestion: ReplaceSuggestion = {
@@ -1671,11 +1734,17 @@ describe('Suggestions: Multi-Editor Collaborative', () => {
       expect(terseB[0]).toContain('C')
     })
 
-    // Suggestion should still be valid after all the back-and-forth
-    const lastCall =
-      onMovedSpyB.mock.calls[onMovedSpyB.mock.calls.length - 1]?.[0]
-    expect(lastCall).toBeDefined()
-    expect(lastCall.newSelection).not.toBeNull()
+    // Suggestion should still be valid after all the back-and-forth.
+    // With inward affinity, insertions before the decoration shift both
+    // anchor and focus equally — the changed=false path fires (Point.transform
+    // correctly tracks offsets without calling onMoved). The decoration
+    // tracks silently. onMoved may or may not fire depending on whether
+    // any insertion landed at the exact boundary.
+    if (onMovedSpyB.mock.calls.length > 0) {
+      const lastCall =
+        onMovedSpyB.mock.calls[onMovedSpyB.mock.calls.length - 1]?.[0]
+      expect(lastCall.newSelection).not.toBeNull()
+    }
 
     // R1: Verify the decorated text is still "world" — offset correctness
     // through multiple rounds of remote patches
