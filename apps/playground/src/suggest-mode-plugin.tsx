@@ -404,10 +404,12 @@ export function SuggestModePlugin(props: {service: FakeSuggestionService}) {
       `[SuggestModePlugin:useEffect] Registering behavior. editor=${!!editor} editorId=${(editor as any)?._internal?.slateEditor?.instance?.id ?? 'unknown'}`,
     )
     const behavior = createSuggestModeBehavior({
-      // isActive() is used as a veto: return false during bypass (accept/reject)
-      // to let mutations through even when the state machine says suggesting.
+      // Veto pattern: return false during bypass (accept/reject) to let
+      // mutations through. Return undefined otherwise to defer entirely
+      // to the state machine for activation control.
       isActive: () => {
-        return !serviceRef.current.isBypassing
+        if (serviceRef.current.isBypassing) return false
+        return undefined
       },
       onIntercept: (interceptEvent) => {
         console.log(
