@@ -104,6 +104,7 @@ export function createInternalEditor(config: EditorConfig): {
           break
 
         case 'update readOnly':
+        case 'update suggestMode':
         case 'patches':
           editorActor.send(event)
           break
@@ -131,6 +132,7 @@ export function createInternalEditor(config: EditorConfig): {
           case 'read only':
           case 'ready':
           case 'selection':
+          case 'suggesting':
           case 'value changed':
             listener(event)
             break
@@ -297,6 +299,7 @@ function createActors(config: {
         case 'ready':
         case 'read only':
         case 'selection':
+        case 'suggesting':
           config.relayActor.send(event)
           break
         case 'internal.patch':

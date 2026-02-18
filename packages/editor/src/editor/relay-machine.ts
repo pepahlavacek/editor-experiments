@@ -46,6 +46,9 @@ export type EditorEmittedEvent =
       type: 'ready'
     }
   | {
+      type: 'suggesting'
+    }
+  | {
       type: 'selection'
       selection: EditorSelection
     }

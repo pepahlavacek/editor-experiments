@@ -93,8 +93,15 @@ export interface SuggestModeBehaviorConfig {
   /**
    * Returns true when suggest mode is active.
    * When false, events pass through to normal PTE handling.
+   *
+   * @deprecated Use `editor.send({type: 'update suggestMode', suggesting: true})`
+   * to control suggesting mode via the state machine instead. When the state
+   * machine is in suggesting mode, this flag is ignored.
+   *
+   * This option is kept for backwards compatibility and will be removed in a
+   * future major version.
    */
-  isActive: () => boolean
+  isActive?: () => boolean
   /**
    * Called when a mutation event is intercepted in suggest mode.
    * The consumer should create a suggestion from the event.
@@ -137,8 +144,12 @@ export function createSuggestModeBehavior(
 ): Behavior {
   return defineBehavior({
     on: '*',
-    guard: ({event}) => {
-      if (!config.isActive()) return false
+    guard: ({event, snapshot}) => {
+      // State machine is authoritative: check snapshot.context.suggesting first.
+      // Fall back to isActive() for backwards compatibility with consumers
+      // that haven't migrated to the state machine approach.
+      const active = snapshot.context.suggesting || config.isActive?.() === true
+      if (!active) return false
       if (!isMutationEvent(event)) return false
       return true
     },

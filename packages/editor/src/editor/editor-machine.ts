@@ -55,6 +55,10 @@ export type ExternalEditorEvent =
       type: 'update readOnly'
       readOnly: boolean
     }
+  | {
+      type: 'update suggestMode'
+      suggesting: boolean
+    }
   | PatchesEvent
 
 type InternalPatchEvent = NamespaceEvent<PatchEvent, 'internal'> & {
@@ -240,6 +244,7 @@ export const editorMachine = setup({
     }),
     'emit read only': emit({type: 'read only'}),
     'emit editable': emit({type: 'editable'}),
+    'emit suggesting': emit({type: 'suggesting'}),
     'defer event': assign({
       pendingEvents: ({context, event}) => {
         assertEvent(event, ['internal.patch', 'mutation'])
@@ -353,6 +358,9 @@ export const editorMachine = setup({
           keyGenerator: context.keyGenerator,
           schema: context.schema,
           readOnly: self.getSnapshot().matches({'edit mode': 'read only'}),
+          suggesting: self.getSnapshot().matches({
+            'edit mode': 'suggesting',
+          }),
           nativeEvent: event.nativeEvent,
           sendBack: (eventSentBack) => {
             if (eventSentBack.type === 'set drag ghost') {
@@ -504,6 +512,11 @@ export const editorMachine = setup({
               target: '#editor.edit mode.read only.read only',
               actions: ['emit read only'],
             },
+            'update suggestMode': {
+              guard: ({event}) => event.suggesting,
+              target: '#editor.edit mode.suggesting',
+              actions: ['emit suggesting'],
+            },
             'behavior event': {
               actions: ['sort behaviors', 'handle behavior event'],
             },
@@ -598,6 +611,145 @@ export const editorMachine = setup({
               exit: [
                 () => {
                   debug.state('exit: edit mode->editable->dragging internally')
+                },
+                ({context}) => {
+                  if (context.dragGhost) {
+                    try {
+                      context.dragGhost.parentNode?.removeChild(
+                        context.dragGhost,
+                      )
+                    } catch (error) {
+                      console.error(
+                        new Error(
+                          `Removing the drag ghost failed due to: ${error instanceof Error ? error.message : error}`,
+                        ),
+                      )
+                    }
+                  }
+                },
+                assign({dragGhost: undefined}),
+                assign({internalDrag: undefined}),
+              ],
+              tags: ['dragging internally'],
+              on: {
+                dragend: {target: 'idle'},
+                drop: {target: 'idle'},
+              },
+            },
+          },
+        },
+        'suggesting': {
+          on: {
+            'update readOnly': {
+              guard: ({event}) => event.readOnly,
+              target: '#editor.edit mode.read only.read only',
+              actions: ['emit read only'],
+            },
+            'update suggestMode': {
+              guard: ({event}) => !event.suggesting,
+              target: '#editor.edit mode.editable',
+              actions: ['emit editable'],
+            },
+            'behavior event': {
+              actions: ['sort behaviors', 'handle behavior event'],
+            },
+            'blur': {
+              actions: 'handle blur',
+            },
+            'focus': {
+              target: '.focusing',
+              actions: [assign({slateEditor: ({event}) => event.editor})],
+            },
+          },
+          initial: 'idle',
+          states: {
+            'idle': {
+              entry: [
+                () => {
+                  debug.state('entry: edit mode->suggesting->idle')
+                },
+              ],
+              exit: [
+                () => {
+                  debug.state('exit: edit mode->suggesting->idle')
+                },
+              ],
+              on: {
+                dragstart: {
+                  actions: [
+                    assign({
+                      internalDrag: ({event}) => ({
+                        origin: event.origin,
+                      }),
+                    }),
+                  ],
+                  target: 'dragging internally',
+                },
+              },
+            },
+            'focusing': {
+              initial: 'checking if busy',
+              states: {
+                'checking if busy': {
+                  entry: [
+                    () => {
+                      debug.state(
+                        'entry: edit mode->suggesting->focusing->checking if busy',
+                      )
+                    },
+                  ],
+                  exit: [
+                    () => {
+                      debug.state(
+                        'exit: edit mode->suggesting->focusing->checking if busy',
+                      )
+                    },
+                  ],
+                  always: [
+                    {
+                      guard: 'slate is busy',
+                      target: 'busy',
+                    },
+                    {
+                      target: '#editor.edit mode.suggesting.idle',
+                      actions: ['handle focus'],
+                    },
+                  ],
+                },
+                'busy': {
+                  entry: [
+                    () => {
+                      debug.state(
+                        'entry: edit mode->suggesting->focusing->busy',
+                      )
+                    },
+                  ],
+                  exit: [
+                    () => {
+                      debug.state('exit: edit mode->suggesting->focusing->busy')
+                    },
+                  ],
+                  after: {
+                    10: {
+                      target: 'checking if busy',
+                    },
+                  },
+                },
+              },
+            },
+            'dragging internally': {
+              entry: [
+                () => {
+                  debug.state(
+                    'entry: edit mode->suggesting->dragging internally',
+                  )
+                },
+              ],
+              exit: [
+                () => {
+                  debug.state(
+                    'exit: edit mode->suggesting->dragging internally',
+                  )
                 },
                 ({context}) => {
                   if (context.dragGhost) {

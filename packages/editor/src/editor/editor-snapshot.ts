@@ -12,6 +12,14 @@ export type EditorContext = {
   converters: Array<Converter>
   keyGenerator: () => string
   readOnly: boolean
+  /**
+   * Whether the editor is in suggesting mode.
+   * When true, mutation events are intercepted by the suggest-mode behavior
+   * instead of modifying the document directly.
+   *
+   * @alpha
+   */
+  suggesting: boolean
   schema: EditorSchema
   selection: EditorSelection
   value: Array<PortableTextBlock>
@@ -35,12 +43,14 @@ export function createEditorSnapshot({
   editor,
   keyGenerator,
   readOnly,
+  suggesting,
   schema,
 }: {
   converters: Array<Converter>
   editor: PortableTextSlateEditor
   keyGenerator: () => string
   readOnly: boolean
+  suggesting: boolean
   schema: EditorSchema
 }) {
   const selection = editor.selection
@@ -55,6 +65,7 @@ export function createEditorSnapshot({
     converters,
     keyGenerator,
     readOnly,
+    suggesting,
     schema,
     selection,
     value: editor.value,

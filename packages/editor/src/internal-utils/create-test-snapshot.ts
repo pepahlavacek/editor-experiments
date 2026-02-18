@@ -11,6 +11,7 @@ export function createTestSnapshot(snapshot: {
     schema: snapshot.context?.schema ?? compileSchema(defineSchema({})),
     keyGenerator: snapshot.context?.keyGenerator ?? createTestKeyGenerator(),
     readOnly: snapshot.context?.readOnly ?? false,
+    suggesting: snapshot.context?.suggesting ?? false,
     value: snapshot.context?.value ?? [],
     selection: snapshot.context?.selection ?? null,
   }

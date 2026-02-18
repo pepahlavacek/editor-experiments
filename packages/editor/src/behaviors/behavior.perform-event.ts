@@ -39,6 +39,7 @@ export function performEvent({
   converters,
   keyGenerator,
   readOnly,
+  suggesting,
   schema,
   nativeEvent,
   sendBack,
@@ -51,6 +52,7 @@ export function performEvent({
   converters: Array<Converter>
   keyGenerator: () => string
   readOnly: boolean
+  suggesting: boolean
   schema: EditorSchema
   nativeEvent:
     | {
@@ -144,6 +146,7 @@ export function performEvent({
     editor,
     keyGenerator,
     readOnly,
+    suggesting,
     schema,
   })
 
@@ -194,6 +197,7 @@ export function performEvent({
         editor,
         keyGenerator,
         readOnly,
+        suggesting,
         schema,
       })
 
@@ -298,6 +302,7 @@ export function performEvent({
                 converters,
                 keyGenerator,
                 readOnly,
+                suggesting,
                 schema,
                 nativeEvent,
                 sendBack,
@@ -317,6 +322,7 @@ export function performEvent({
                 converters,
                 keyGenerator,
                 readOnly,
+                suggesting,
                 schema,
                 nativeEvent,
                 sendBack,
@@ -334,6 +340,7 @@ export function performEvent({
               converters,
               keyGenerator,
               readOnly,
+              suggesting,
               schema,
               nativeEvent: undefined,
               sendBack,

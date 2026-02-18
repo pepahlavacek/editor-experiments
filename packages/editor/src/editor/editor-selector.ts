@@ -80,6 +80,7 @@ export function getEditorSnapshot({
       converters: [...editorActorSnapshot.context.converters],
       keyGenerator: editorActorSnapshot.context.keyGenerator,
       readOnly: editorActorSnapshot.matches({'edit mode': 'read only'}),
+      suggesting: editorActorSnapshot.matches({'edit mode': 'suggesting'}),
       schema: editorActorSnapshot.context.schema,
       selection,
       value: slateEditorInstance.value,
