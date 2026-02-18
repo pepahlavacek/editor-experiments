@@ -1,4 +1,5 @@
 import type {EditorSelection, Suggestion} from '@portabletext/editor'
+import {textToSuggestionContent} from '@portabletext/editor'
 
 export type SuggestionServiceEvent =
   | {type: 'added'; suggestion: Suggestion}
@@ -111,7 +112,7 @@ export class FakeSuggestionService {
           type: 'replace',
           id,
           selection,
-          replacementText: options.text ?? 'replacement',
+          content: textToSuggestionContent(options.text ?? 'replacement'),
         }
         break
       case 'insert':
@@ -119,7 +120,7 @@ export class FakeSuggestionService {
           type: 'insert',
           id,
           selection,
-          insertedText: options.text ?? 'inserted text',
+          content: textToSuggestionContent(options.text ?? 'inserted text'),
         }
         break
       case 'delete':

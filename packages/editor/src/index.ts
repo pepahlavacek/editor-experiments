@@ -104,6 +104,8 @@ export type {
   SuggestionConfig,
   SuggestionEvent,
   SuggestionOnMovedDetails,
+  getPlainTextFromSuggestion,
+  textToSuggestionContent,
 } from './types/suggestion'
 export {
   DeleteSuggestionComponent,
@@ -112,3 +114,8 @@ export {
 } from './suggestions/suggestion-components'
 export type {SuggestionComponentProps} from './suggestions/suggestion-components'
 export {suggestionsToDecorations} from './suggestions/suggestions-to-decorations'
+export {
+  createSuggestModeBehavior,
+  type SuggestModeBehaviorConfig,
+  type SuggestModeInterceptEvent,
+} from './suggestions/behavior.suggest-mode'

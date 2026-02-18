@@ -6,6 +6,7 @@ import type {
   ReplaceSuggestion,
   SuggestionConfig,
 } from '../../types/suggestion'
+import {textToSuggestionContent} from '../../types/suggestion'
 import {suggestionsToDecorations} from '../suggestions-to-decorations'
 
 const makeSelection = (
@@ -50,7 +51,7 @@ describe('suggestionsToDecorations', () => {
       type: 'replace',
       id: 'replace-1',
       selection: makeSelection('b1', 's1', 5, 10),
-      replacementText: 'world',
+      content: textToSuggestionContent('world'),
     }
     const decoration = first({suggestions: [suggestion]})
 
@@ -68,7 +69,7 @@ describe('suggestionsToDecorations', () => {
       type: 'insert',
       id: 'insert-1',
       selection: makeCollapsedSelection('b1', 's1', 5),
-      insertedText: 'hello ',
+      content: textToSuggestionContent('hello '),
     }
     const decoration = first({suggestions: [suggestion]})
 
@@ -106,13 +107,13 @@ describe('suggestionsToDecorations', () => {
         type: 'replace' as const,
         id: 'r1',
         selection: makeSelection('b1', 's1', 0, 5),
-        replacementText: 'Hello',
+        content: textToSuggestionContent('Hello'),
       },
       {
         type: 'insert' as const,
         id: 'i1',
         selection: makeCollapsedSelection('b1', 's1', 10),
-        insertedText: ' World',
+        content: textToSuggestionContent(' World'),
       },
       {
         type: 'delete' as const,
@@ -134,7 +135,7 @@ describe('suggestionsToDecorations', () => {
       type: 'replace',
       id: 'r1',
       selection: makeSelection('b1', 's1', 0, 5),
-      replacementText: 'test',
+      content: textToSuggestionContent('test'),
     }
     const decoration = first({suggestions: [suggestion], onMoved})
 
@@ -163,7 +164,7 @@ describe('suggestionsToDecorations', () => {
       type: 'replace',
       id: 'r1',
       selection: makeSelection('b1', 's1', 0, 5),
-      replacementText: 'test',
+      content: textToSuggestionContent('test'),
     }
     const decoration = first({suggestions: [suggestion]})
 

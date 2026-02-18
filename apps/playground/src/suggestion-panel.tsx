@@ -1,4 +1,5 @@
 import {
+  getPlainTextFromSuggestion,
   suggestionsToDecorations,
   useEditor,
   useEditorSelector,
@@ -31,24 +32,28 @@ import {Tooltip} from './primitives/tooltip'
  */
 function applySuggestionToEditor(editor: Editor, suggestion: Suggestion) {
   switch (suggestion.type) {
-    case 'insert':
+    case 'insert': {
       // Place cursor at the insert position (collapsed selection)
+      const text = getPlainTextFromSuggestion(suggestion)
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
-      editor.send({type: 'insert.text', text: suggestion.insertedText})
+      editor.send({type: 'insert.text', text})
       break
+    }
     case 'delete':
       // Select the range and delete it
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
       editor.send({type: 'insert.text', text: ''})
       break
-    case 'replace':
+    case 'replace': {
       // Select the range and replace with new text
+      const text = getPlainTextFromSuggestion(suggestion)
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
-      editor.send({type: 'insert.text', text: suggestion.replacementText})
+      editor.send({type: 'insert.text', text})
       break
+    }
   }
 }
 
@@ -56,7 +61,7 @@ function applySuggestionToEditor(editor: Editor, suggestion: Suggestion) {
  * Hook that manages a shared FakeSuggestionService instance.
  * Does NOT require EditorProvider — can be called at any level.
  *
- * Returns the service, raw suggestions, and enabled state.
+ * Returns the service, raw suggestions, enabled state, and suggest mode state.
  * Each editor creates its own decorations via useSuggestionDecorations().
  */
 export function useSharedSuggestionService(): {
@@ -64,8 +69,11 @@ export function useSharedSuggestionService(): {
   suggestions: Suggestion[]
   enabled: boolean
   toggle: () => void
+  suggestMode: boolean
+  toggleSuggestMode: () => void
 } {
   const [enabled, setEnabled] = useState(false)
+  const [suggestMode, setSuggestMode] = useState(false)
   const serviceRef = useRef<FakeSuggestionService | null>(null)
   if (!serviceRef.current) {
     serviceRef.current = new FakeSuggestionService()
@@ -95,14 +103,25 @@ export function useSharedSuggestionService(): {
   const toggle = useCallback(() => {
     setEnabled((prev) => {
       if (prev) {
-        // Turning off — clear all suggestions
+        // Turning off — clear all suggestions and disable suggest mode
         service.clear()
+        setSuggestMode(false)
       }
       return !prev
     })
   }, [service])
 
-  return {service, suggestions, enabled, toggle}
+  const toggleSuggestMode = useCallback(() => {
+    setSuggestMode((prev) => {
+      if (!prev) {
+        // Turning on suggest mode — also enable suggestions if not already
+        setEnabled(true)
+      }
+      return !prev
+    })
+  }, [])
+
+  return {service, suggestions, enabled, toggle, suggestMode, toggleSuggestMode}
 }
 
 /**

@@ -1,3 +1,4 @@
+import type {PortableTextBlock} from '@portabletext/schema'
 import type {EditorSelection} from './editor'
 
 /**
@@ -8,6 +9,9 @@ import type {EditorSelection} from './editor'
  * Phase 1: Read-only display — suggestions are rendered inline with accept/reject
  * affordances. The editor content is NOT modified; suggestions are purely visual
  * overlays powered by range decorations.
+ *
+ * Phase 2: Suggest mode — typing in suggest mode creates suggestions instead of
+ * editing the base document. Content is stored as PortableTextBlock[] for rich text.
  *
  * @alpha
  */
@@ -34,9 +38,10 @@ export interface ReplaceSuggestion {
    */
   selection: NonNullable<EditorSelection>
   /**
-   * The replacement text to show inline.
+   * The replacement content as portable text blocks.
+   * For plain text replacements, use `textToSuggestionContent()`.
    */
-  replacementText: string
+  content: PortableTextBlock[]
   /**
    * Optional description of why this change is suggested.
    */
@@ -66,9 +71,10 @@ export interface InsertSuggestion {
    */
   selection: NonNullable<EditorSelection>
   /**
-   * The text to insert.
+   * The content to insert as portable text blocks.
+   * For plain text insertions, use `textToSuggestionContent()`.
    */
-  insertedText: string
+  content: PortableTextBlock[]
   /**
    * Optional description of why this insertion is suggested.
    */
@@ -171,4 +177,59 @@ export interface SuggestionConfig {
    * (only honored for remote origin, same as RangeDecoration.onMoved).
    */
   onMoved?: (details: SuggestionOnMovedDetails) => EditorSelection | void
+}
+
+/**
+ * Extract plain text from a suggestion's content blocks.
+ *
+ * Concatenates all text spans across all blocks, joining blocks with newlines.
+ * Ignores inline objects and block objects — only extracts span text.
+ *
+ * @alpha
+ */
+export function getPlainTextFromSuggestion(
+  suggestion: InsertSuggestion | ReplaceSuggestion,
+): string {
+  return suggestion.content
+    .map((block) => {
+      if (!('children' in block) || !Array.isArray(block.children)) {
+        return ''
+      }
+      return block.children
+        .filter(
+          (child): child is {_type: string; text: string} => 'text' in child,
+        )
+        .map((span) => span.text)
+        .join('')
+    })
+    .join('\n')
+}
+
+/**
+ * Create a PortableTextBlock[] from plain text.
+ *
+ * Each line becomes a separate block with a single span.
+ * This is the simplest possible conversion — no decorators, no annotations.
+ *
+ * @alpha
+ */
+export function textToSuggestionContent(text: string): PortableTextBlock[] {
+  const lines = text.split('\n')
+  return lines.map(
+    (line) =>
+      ({
+        _type: 'block',
+        _key: `suggestion-${Math.random().toString(36).slice(2, 8)}`,
+        children: [
+          {
+            _type: 'span',
+            _key: `suggestion-${Math.random().toString(36).slice(2, 8)}`,
+            text: line,
+            marks: [],
+          },
+        ],
+        markDefs: [],
+        style: 'normal',
+      }) as unknown as PortableTextBlock,
+  )
 }

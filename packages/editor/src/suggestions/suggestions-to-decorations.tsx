@@ -51,7 +51,7 @@ function suggestionToDecoration(
         component: (props: PropsWithChildren) => (
           <ReplaceSuggestionComponent
             suggestionId={suggestion.id}
-            replacementText={suggestion.replacementText}
+            content={suggestion.content}
             onAccept={onAccept}
             onReject={onReject}
           >
@@ -68,7 +68,7 @@ function suggestionToDecoration(
         component: (props: PropsWithChildren) => (
           <InsertSuggestionComponent
             suggestionId={suggestion.id}
-            insertedText={suggestion.insertedText}
+            content={suggestion.content}
             onAccept={onAccept}
             onReject={onReject}
           >

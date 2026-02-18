@@ -21,6 +21,7 @@ import type {
   Suggestion,
   SuggestionConfig,
 } from '../src/types/suggestion'
+import {textToSuggestionContent} from '../src/types/suggestion'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,7 +103,7 @@ describe('Suggestions: Rendering', () => {
       type: 'replace',
       id: 'rep-1',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
     const config: SuggestionConfig = {
       suggestions: [suggestion],
@@ -137,7 +138,7 @@ describe('Suggestions: Rendering', () => {
       type: 'insert',
       id: 'ins-1',
       selection: sel(5, 5), // collapsed at "Hello|world"
-      insertedText: ' beautiful',
+      content: textToSuggestionContent(' beautiful'),
     }
     const config: SuggestionConfig = {
       suggestions: [suggestion],
@@ -249,7 +250,7 @@ describe('Suggestions: Position Tracking', () => {
       type: 'replace',
       id: 'rep-shift',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -439,7 +440,7 @@ describe('Suggestions: Position Tracking', () => {
       type: 'replace',
       id: 'rep-left',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -515,7 +516,7 @@ describe('Suggestions: Position Tracking', () => {
       type: 'replace',
       id: 'rep-world',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -601,7 +602,7 @@ describe('Suggestions: Interactions', () => {
       type: 'replace',
       id: 'rep-accept',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     let suggestions: Suggestion[] = [suggestion]
@@ -706,7 +707,7 @@ describe('Suggestions: Interactions', () => {
       type: 'replace',
       id: 'rep-edit-inside',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -834,7 +835,7 @@ describe('Suggestions: Nested / Overlapping', () => {
       type: 'replace',
       id: 'rep-overlap',
       selection: sel(3, 9), // "lo wor"
-      replacementText: 'REPLACED',
+      content: textToSuggestionContent('REPLACED'),
     }
     const suggestion2: DeleteSuggestion = {
       type: 'delete',
@@ -874,13 +875,13 @@ describe('Suggestions: Nested / Overlapping', () => {
       type: 'replace',
       id: 'rep-outer',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
     const suggestion2: InsertSuggestion = {
       type: 'insert',
       id: 'ins-inner',
       selection: sel(8, 8), // collapsed inside "world"
-      insertedText: 'INJECTED',
+      content: textToSuggestionContent('INJECTED'),
     }
 
     const config: SuggestionConfig = {
@@ -930,7 +931,7 @@ describe('Suggestions: Nested / Overlapping', () => {
       type: 'replace',
       id: 'rep-inner',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -1074,7 +1075,7 @@ describe('Suggestions: Nested / Overlapping', () => {
       type: 'replace',
       id: 'rep-inner-rej',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     let suggestions: Suggestion[] = [suggestion1, suggestion2]
@@ -1213,7 +1214,7 @@ describe('Suggestions: Change Shifting', () => {
       type: 'replace',
       id: 'rep-b2',
       selection: selBlock('b2', 's2', 8, 12), // "moon"
-      replacementText: 'sun',
+      content: textToSuggestionContent('sun'),
     }
 
     const config: SuggestionConfig = {
@@ -1272,7 +1273,7 @@ describe('Suggestions: Change Shifting', () => {
       type: 'replace',
       id: 'rep-rapid',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -1435,7 +1436,7 @@ describe('Suggestions: Multi-Editor Collaborative', () => {
       type: 'replace',
       id: 'rep-collab',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {
@@ -1586,7 +1587,7 @@ describe('Suggestions: Multi-Editor Collaborative', () => {
       type: 'replace',
       id: 'rep-indep-b',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const decorationsA = suggestionsToDecorations({
@@ -1773,7 +1774,7 @@ describe('Suggestions: Multi-Editor Collaborative', () => {
       type: 'replace',
       id: 'rep-split',
       selection: sel(6, 11), // "world"
-      replacementText: 'earth',
+      content: textToSuggestionContent('earth'),
     }
 
     const config: SuggestionConfig = {

@@ -1,4 +1,6 @@
+import type {PortableTextBlock} from '@portabletext/schema'
 import type {PropsWithChildren, ReactElement} from 'react'
+import {getPlainTextFromSuggestion} from '../types/suggestion'
 
 /**
  * Default suggestion rendering components.
@@ -28,11 +30,19 @@ export interface SuggestionComponentProps extends PropsWithChildren {
  */
 export function ReplaceSuggestionComponent(
   props: SuggestionComponentProps & {
-    replacementText: string
+    content: PortableTextBlock[]
     onAccept?: () => void
     onReject?: () => void
   },
 ): ReactElement<any> {
+  // Extract plain text for rendering — rich text rendering is Phase 2B
+  const displayText = getPlainTextFromSuggestion({
+    type: 'replace',
+    id: props.suggestionId,
+    selection: {anchor: {path: [], offset: 0}, focus: {path: [], offset: 0}},
+    content: props.content,
+  })
+
   return (
     <span
       data-testid={`suggestion-${props.suggestionId}`}
@@ -62,7 +72,7 @@ export function ReplaceSuggestionComponent(
           padding: '0 1px',
         }}
       >
-        {props.replacementText}
+        {displayText}
       </span>
       {(props.onAccept || props.onReject) && (
         <SuggestionActionButtons
@@ -83,11 +93,19 @@ export function ReplaceSuggestionComponent(
  */
 export function InsertSuggestionComponent(
   props: SuggestionComponentProps & {
-    insertedText: string
+    content: PortableTextBlock[]
     onAccept?: () => void
     onReject?: () => void
   },
 ): ReactElement<any> {
+  // Extract plain text for rendering — rich text rendering is Phase 2B
+  const displayText = getPlainTextFromSuggestion({
+    type: 'insert',
+    id: props.suggestionId,
+    selection: {anchor: {path: [], offset: 0}, focus: {path: [], offset: 0}},
+    content: props.content,
+  })
+
   return (
     <span
       data-testid={`suggestion-${props.suggestionId}`}
@@ -106,7 +124,7 @@ export function InsertSuggestionComponent(
           padding: '0 1px',
         }}
       >
-        {props.insertedText}
+        {displayText}
       </span>
       {(props.onAccept || props.onReject) && (
         <SuggestionActionButtons

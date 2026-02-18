@@ -34,6 +34,7 @@ import {
   CopyIcon,
   FileJsonIcon,
   LinkIcon,
+  MessageSquarePlusIcon,
   MousePointerIcon,
   PencilIcon,
   PencilOffIcon,
@@ -80,6 +81,7 @@ import {Tooltip} from './primitives/tooltip'
 import {RangeDecorationButton} from './range-decoration-button'
 import {ReanchorButtons} from './reanchor-simulation'
 import {SlashCommandPickerPlugin} from './slash-command-picker'
+import {SuggestModePlugin} from './suggest-mode-plugin'
 import {
   SuggestionPanel,
   SuggestionServiceToggle,
@@ -101,6 +103,8 @@ export function Editor(props: {
     suggestions: Suggestion[]
     enabled: boolean
     toggle: () => void
+    suggestMode: boolean
+    toggleSuggestMode: () => void
   }
 }) {
   const value = useSelector(props.editorRef, (s) => s.context.value)
@@ -211,6 +215,8 @@ function EditorWithSuggestions(props: {
     suggestions: Suggestion[]
     enabled: boolean
     toggle: () => void
+    suggestMode: boolean
+    toggleSuggestMode: () => void
   }
 }) {
   const {featureFlags, suggestionService} = props
@@ -232,6 +238,10 @@ function EditorWithSuggestions(props: {
 
   return (
     <Container className="flex flex-col overflow-clip">
+      <SuggestModePlugin
+        active={suggestionService.suggestMode}
+        service={suggestionService.service}
+      />
       {featureFlags.emojiPickerPlugin ? <EmojiPickerPlugin /> : null}
       {featureFlags.mentionPickerPlugin ? <MentionPickerPlugin /> : null}
       {featureFlags.slashCommandPlugin ? <SlashCommandPickerPlugin /> : null}
@@ -265,8 +275,14 @@ function EditorWithSuggestions(props: {
           onError={console.error}
         >
           <EditorFeatureFlagsContext.Provider value={featureFlags}>
+            {suggestionService.suggestMode && (
+              <div className="flex items-center gap-1 px-2 py-0.5 -mx-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-xs">
+                <MessageSquarePlusIcon className="size-3" />
+                <span>Suggest mode — typing creates suggestions</span>
+              </div>
+            )}
             <PortableTextEditable
-              className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''}`}
+              className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''} ${suggestionService.suggestMode ? 'ring-1 ring-amber-300 dark:ring-amber-700 ring-inset' : ''}`}
               rangeDecorations={allDecorations}
               renderAnnotation={renderAnnotation}
               renderBlock={RenderBlock}
@@ -294,6 +310,8 @@ function EditorWithSuggestions(props: {
           enabled: suggestionService.enabled,
           toggle: suggestionService.toggle,
           suggestions: suggestionService.suggestions,
+          suggestMode: suggestionService.suggestMode,
+          toggleSuggestMode: suggestionService.toggleSuggestMode,
         }}
         rangeDecorations={props.rangeDecorations}
         onReanchor={props.onReanchor}
@@ -651,6 +669,8 @@ function EditorFooter(props: {
     enabled: boolean
     toggle: () => void
     suggestions: Array<{id: string}>
+    suggestMode: boolean
+    toggleSuggestMode: () => void
   }
   rangeDecorations: RangeDecoration[]
   onReanchor: (
@@ -728,6 +748,21 @@ function EditorFooter(props: {
             suggestionCount={props.suggestionService.suggestions.length}
             onToggle={props.suggestionService.toggle}
           />
+          <TooltipTrigger>
+            <ToggleButton
+              variant="ghost"
+              size="sm"
+              isSelected={props.suggestionService.suggestMode}
+              onChange={props.suggestionService.toggleSuggestMode}
+            >
+              <MessageSquarePlusIcon className="size-3" />
+            </ToggleButton>
+            <Tooltip>
+              {props.suggestionService.suggestMode
+                ? 'Suggest mode ON — typing creates suggestions'
+                : 'Suggest mode OFF — typing edits document'}
+            </Tooltip>
+          </TooltipTrigger>
         </div>
         <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
         <div className="flex items-center gap-0.5">
