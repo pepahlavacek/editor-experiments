@@ -42,7 +42,14 @@ import {
   WandSparklesIcon,
   XIcon,
 } from 'lucide-react'
-import {useContext, useEffect, useMemo, useState, type JSX} from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type JSX,
+} from 'react'
 import {TooltipTrigger} from 'react-aria-components'
 import {tv} from 'tailwind-variants'
 import './editor.css'
@@ -103,8 +110,6 @@ export function Editor(props: {
     suggestions: Suggestion[]
     enabled: boolean
     toggle: () => void
-    suggestMode: boolean
-    toggleSuggestMode: () => void
   }
 }) {
   const value = useSelector(props.editorRef, (s) => s.context.value)
@@ -215,11 +220,22 @@ function EditorWithSuggestions(props: {
     suggestions: Suggestion[]
     enabled: boolean
     toggle: () => void
-    suggestMode: boolean
-    toggleSuggestMode: () => void
   }
 }) {
   const {featureFlags, suggestionService} = props
+
+  // Per-editor suggest mode state — each editor independently controls
+  // whether typing creates suggestions or edits the document.
+  const [suggestMode, setSuggestMode] = useState(false)
+  const toggleSuggestMode = useCallback(() => {
+    setSuggestMode((prev) => {
+      if (!prev && !suggestionService.enabled) {
+        // Turning on suggest mode — also enable suggestions if not already
+        suggestionService.toggle()
+      }
+      return !prev
+    })
+  }, [suggestionService])
 
   // Each editor creates its own decorations from the shared suggestions.
   // The onAction callback uses this editor's useEditor() instance,
@@ -239,7 +255,7 @@ function EditorWithSuggestions(props: {
   return (
     <Container className="flex flex-col overflow-clip">
       <SuggestModePlugin
-        active={suggestionService.suggestMode}
+        active={suggestMode}
         service={suggestionService.service}
       />
       {featureFlags.emojiPickerPlugin ? <EmojiPickerPlugin /> : null}
@@ -268,6 +284,12 @@ function EditorWithSuggestions(props: {
           })}
         />
       ) : null}
+      {suggestMode && (
+        <div className="flex items-center gap-1 px-2 py-0.5 -mx-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-xs">
+          <MessageSquarePlusIcon className="size-3" />
+          <span>Suggest mode — typing creates suggestions</span>
+        </div>
+      )}
       <div className="flex gap-2 items-center">
         <ErrorBoundary
           fallbackProps={{area: 'PortableTextEditable'}}
@@ -275,14 +297,8 @@ function EditorWithSuggestions(props: {
           onError={console.error}
         >
           <EditorFeatureFlagsContext.Provider value={featureFlags}>
-            {suggestionService.suggestMode && (
-              <div className="flex items-center gap-1 px-2 py-0.5 -mx-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-xs">
-                <MessageSquarePlusIcon className="size-3" />
-                <span>Suggest mode — typing creates suggestions</span>
-              </div>
-            )}
             <PortableTextEditable
-              className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''} ${suggestionService.suggestMode ? 'ring-1 ring-amber-300 dark:ring-amber-700 ring-inset' : ''}`}
+              className={`rounded-b-md outline-none data-[read-only=true]:opacity-50 px-2 h-75 -mx-2 -mb-2 overflow-auto flex-1 ${featureFlags.dragHandles ? 'ps-5' : ''} ${suggestMode ? 'ring-1 ring-amber-300 dark:ring-amber-700 ring-inset' : ''}`}
               rangeDecorations={allDecorations}
               renderAnnotation={renderAnnotation}
               renderBlock={RenderBlock}
@@ -310,8 +326,8 @@ function EditorWithSuggestions(props: {
           enabled: suggestionService.enabled,
           toggle: suggestionService.toggle,
           suggestions: suggestionService.suggestions,
-          suggestMode: suggestionService.suggestMode,
-          toggleSuggestMode: suggestionService.toggleSuggestMode,
+          suggestMode,
+          toggleSuggestMode,
         }}
         rangeDecorations={props.rangeDecorations}
         onReanchor={props.onReanchor}

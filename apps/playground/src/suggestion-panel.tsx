@@ -69,11 +69,8 @@ export function useSharedSuggestionService(): {
   suggestions: Suggestion[]
   enabled: boolean
   toggle: () => void
-  suggestMode: boolean
-  toggleSuggestMode: () => void
 } {
   const [enabled, setEnabled] = useState(false)
-  const [suggestMode, setSuggestMode] = useState(false)
   const serviceRef = useRef<FakeSuggestionService | null>(null)
   if (!serviceRef.current) {
     serviceRef.current = new FakeSuggestionService()
@@ -103,25 +100,14 @@ export function useSharedSuggestionService(): {
   const toggle = useCallback(() => {
     setEnabled((prev) => {
       if (prev) {
-        // Turning off — clear all suggestions and disable suggest mode
+        // Turning off — clear all suggestions
         service.clear()
-        setSuggestMode(false)
       }
       return !prev
     })
   }, [service])
 
-  const toggleSuggestMode = useCallback(() => {
-    setSuggestMode((prev) => {
-      if (!prev) {
-        // Turning on suggest mode — also enable suggestions if not already
-        setEnabled(true)
-      }
-      return !prev
-    })
-  }, [])
-
-  return {service, suggestions, enabled, toggle, suggestMode, toggleSuggestMode}
+  return {service, suggestions, enabled, toggle}
 }
 
 /**
