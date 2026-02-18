@@ -417,13 +417,18 @@ export function SuggestModePlugin(props: {service: FakeSuggestionService}) {
         )
         onIntercept(interceptEvent)
 
-        // After the suggestion mutation, React will re-render with the new
-        // decoration (injected suggestion span). This DOM change can displace
-        // the browser cursor. Schedule a focus restoration after React's
-        // commit phase to put the cursor back where it was.
+        // Restore selection synchronously after creating/updating the
+        // suggestion. The selection must be set BEFORE the next keystroke's
+        // beforeinput fires, otherwise fast typing sees a stale cursor
+        // position and text appears backwards.
+        //
+        // Using queueMicrotask instead of requestAnimationFrame: microtasks
+        // fire after the current task but before the next event (including
+        // beforeinput), so the cursor is correct for the next keystroke.
+        // rAF fires after rendering, which races with fast typing.
         const selection = interceptEvent.snapshot.context.selection
         if (selection) {
-          requestAnimationFrame(() => {
+          queueMicrotask(() => {
             editor.send({type: 'select', at: selection})
           })
         }

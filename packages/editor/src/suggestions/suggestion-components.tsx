@@ -61,6 +61,7 @@ export function ReplaceSuggestionComponent(
         {props.children}
       </span>
       <span
+        contentEditable={false}
         data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
@@ -115,6 +116,7 @@ export function InsertSuggestionComponent(
       data-suggestion-type="insert"
     >
       <span
+        contentEditable={false}
         data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
@@ -199,6 +201,7 @@ function SuggestionActionButtons(props: {
           type="button"
           title="Accept suggestion"
           onClick={props.onAccept}
+          onMouseDown={(e) => e.preventDefault()}
           style={{
             border: 'none',
             background: 'rgba(22, 163, 74, 0.15)',
@@ -218,6 +221,7 @@ function SuggestionActionButtons(props: {
           type="button"
           title="Reject suggestion"
           onClick={props.onReject}
+          onMouseDown={(e) => e.preventDefault()}
           style={{
             border: 'none',
             background: 'rgba(220, 38, 38, 0.15)',
