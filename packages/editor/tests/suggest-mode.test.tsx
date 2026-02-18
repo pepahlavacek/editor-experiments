@@ -13,21 +13,25 @@
  * - Backspace shrinks the current insert suggestion
  * - Delete extends adjacent delete suggestions
  */
+import {getTersePt} from '@portabletext/test'
 import {describe, expect, test, vi} from 'vitest'
+import {page, userEvent} from 'vitest/browser'
 import {
   createSuggestModeBehavior,
+  suggestionsToDecorations,
   type EditorSelection,
   type InsertSuggestion,
   type Suggestion,
   type SuggestModeInterceptEvent,
 } from '../src'
-import {createTestEditor} from '../src/test/vitest'
+import {createTestEditor, createTestEditors} from '../src/test/vitest'
 // ===========================================================================
 // Phase 2B: Suggestion continuation
 // ===========================================================================
 
 // Path / selection comparison helpers (mirrors suggest-mode-plugin.tsx)
 import type {EditorSelectionPoint} from '../src/types/editor'
+import type {SuggestionConfig} from '../src/types/suggestion'
 import {
   getPlainTextFromSuggestion,
   textToSuggestionContent,
@@ -1014,5 +1018,282 @@ describe('Suggest mode: continuation (Phase 2B)', () => {
     expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
       'axy',
     )
+  })
+})
+
+// ===========================================================================
+// Real keyboard input tests (userEvent.type)
+//
+// All previous tests use editor.send() which goes through the behavior system
+// directly. These tests use userEvent.type() which fires real keyboard events
+// through the browser's contentEditable → Slate's beforeinput handler →
+// Editor.insertText → behavior system. This exercises the full native input
+// pipeline and catches issues where:
+// - Slate's native insertion path bypasses preventDefault
+// - DOM mutations happen before the behavior system can intercept
+// - The behavior intercepts but the DOM is already mutated
+// ===========================================================================
+
+/**
+ * Set up a test editor with suggest mode behavior AND suggestion decorations.
+ * This is the full rendering pipeline: behavior intercepts events, creates
+ * suggestions, and decorations render them in the DOM.
+ *
+ * Returns a rerender function that updates decorations from current suggestions.
+ */
+async function createRealInputEditor() {
+  const suggestions: Suggestion[] = []
+  let suggestModeActive = false
+  let nextId = 1
+
+  function findInsertAtPoint(
+    point: EditorSelectionPoint,
+  ): InsertSuggestion | undefined {
+    return suggestions.find(
+      (s): s is InsertSuggestion =>
+        s.type === 'insert' && pointsEqual(s.selection.anchor, point),
+    )
+  }
+
+  const behavior = createSuggestModeBehavior({
+    isActive: () => suggestModeActive,
+    onIntercept: ({event, snapshot}) => {
+      const selection = snapshot.context.selection
+      if (!selection) return
+
+      if (event.type === 'insert.text' && 'text' in event && event.text) {
+        const cursorPoint = selection.anchor
+        const existing = findInsertAtPoint(cursorPoint)
+        if (existing) {
+          const plainText = getPlainTextFromSuggestion(existing)
+          const idx = suggestions.indexOf(existing)
+          suggestions[idx] = {
+            ...existing,
+            content: textToSuggestionContent(plainText + event.text),
+          }
+        } else {
+          suggestions.push({
+            type: 'insert',
+            id: `suggest-${nextId++}`,
+            selection: {anchor: cursorPoint, focus: cursorPoint},
+            content: textToSuggestionContent(event.text),
+          })
+        }
+      }
+    },
+  })
+
+  const {editor, locator, rerender} = await createTestEditor({
+    initialValue: helloWorldValue(),
+  })
+
+  const unregister = editor.registerBehavior({behavior})
+
+  /**
+   * Rebuild decorations from current suggestions and rerender.
+   */
+  async function rerenderDecorations() {
+    const config: SuggestionConfig = {
+      suggestions: [...suggestions],
+      onAction: vi.fn(),
+    }
+    const decorations = suggestionsToDecorations(config)
+    await rerender({
+      initialValue: helloWorldValue(),
+      editableProps: {rangeDecorations: decorations},
+    })
+  }
+
+  return {
+    editor,
+    locator,
+    suggestions,
+    enableSuggestMode: () => {
+      suggestModeActive = true
+    },
+    disableSuggestMode: () => {
+      suggestModeActive = false
+    },
+    rerenderDecorations,
+    unregister,
+  }
+}
+
+describe('Suggest mode: real keyboard input (userEvent.type)', () => {
+  test('real keyboard input in suggest mode creates suggestion, base doc unchanged', async () => {
+    const {
+      editor,
+      locator,
+      suggestions,
+      enableSuggestMode,
+      rerenderDecorations,
+    } = await createRealInputEditor()
+
+    // Focus and place cursor at offset 5 (after "Hello")
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+        focus: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+      },
+    })
+
+    // Enable suggest mode
+    enableSuggestMode()
+
+    // Type using real keyboard input
+    await userEvent.type(locator, 'abc')
+
+    // Verify: suggestion was created with the typed text
+    await vi.waitFor(() => {
+      expect(suggestions.length).toBeGreaterThanOrEqual(1)
+    })
+
+    // The suggestion should contain "abc" (possibly as one or multiple suggestions
+    // depending on continuation, but total text should be "abc")
+    const totalText = suggestions
+      .filter((s): s is InsertSuggestion => s.type === 'insert')
+      .map((s) => getPlainTextFromSuggestion(s))
+      .join('')
+    expect(totalText).toBe('abc')
+
+    // Verify: base document text is still "Hello world" — NOT "Helloabc world"
+    const terse = getTersePt(editor.getSnapshot().context)
+    expect(terse).toEqual(['Hello world'])
+
+    // Rerender with decorations and verify suggestion is visible
+    await rerenderDecorations()
+    const insertedEl = page.getByTestId(
+      `suggestion-${suggestions[0]!.id}-inserted`,
+    )
+    await vi.waitFor(() => expect.element(insertedEl).toBeInTheDocument())
+  })
+
+  test('real keyboard input order is preserved — no backwards text', async () => {
+    const {
+      editor,
+      locator,
+      suggestions,
+      enableSuggestMode,
+      rerenderDecorations,
+    } = await createRealInputEditor()
+
+    // Focus and place cursor at offset 5
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+        focus: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type "hello" character by character via real keyboard
+    await userEvent.type(locator, 'hello')
+
+    // Verify suggestion content is "hello" not "olleh"
+    await vi.waitFor(() => {
+      expect(suggestions.length).toBeGreaterThanOrEqual(1)
+    })
+
+    const totalText = suggestions
+      .filter((s): s is InsertSuggestion => s.type === 'insert')
+      .map((s) => getPlainTextFromSuggestion(s))
+      .join('')
+    expect(totalText).toBe('hello')
+
+    // Base doc unchanged
+    const terse = getTersePt(editor.getSnapshot().context)
+    expect(terse).toEqual(['Hello world'])
+
+    // Rerender with decorations and verify visual order
+    await rerenderDecorations()
+    const insertedEl = page.getByTestId(
+      `suggestion-${suggestions[0]!.id}-inserted`,
+    )
+    await vi.waitFor(() =>
+      expect.element(insertedEl).toHaveTextContent('hello'),
+    )
+  })
+
+  test('suggest mode toggle per-editor — typing in one editor does not affect other', async () => {
+    // This test needs two editors sharing a suggestion service.
+    // Editor A: suggest mode ON → typing creates suggestions
+    // Editor B: suggest mode OFF → typing edits base doc normally
+
+    const suggestions: Suggestion[] = []
+    let suggestModeA = false
+    let nextId = 1
+
+    const behaviorA = createSuggestModeBehavior({
+      isActive: () => suggestModeA,
+      onIntercept: ({event, snapshot}) => {
+        const selection = snapshot.context.selection
+        if (!selection) return
+        if (event.type === 'insert.text' && 'text' in event && event.text) {
+          suggestions.push({
+            type: 'insert',
+            id: `suggest-${nextId++}`,
+            selection: {anchor: selection.anchor, focus: selection.anchor},
+            content: textToSuggestionContent(event.text),
+          })
+        }
+      },
+    })
+
+    // Editor B has suggest mode always OFF — no behavior registered
+    const {editor, locator, editorB, locatorB} = await createTestEditors({
+      initialValue: helloWorldValue(),
+    })
+
+    // Register suggest mode behavior only on Editor A
+    const unregisterA = editor.registerBehavior({behavior: behaviorA})
+
+    // Enable suggest mode on Editor A
+    suggestModeA = true
+
+    // Type in Editor A — should create suggestion, not edit doc
+    await userEvent.click(locator)
+    editor.send({type: 'focus'})
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+        focus: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+      },
+    })
+    await userEvent.type(locator, 'XY')
+
+    // Verify: suggestion created in Editor A
+    await vi.waitFor(() => {
+      expect(suggestions.length).toBeGreaterThanOrEqual(1)
+    })
+
+    // Verify: Editor A base doc unchanged
+    const terseA = getTersePt(editor.getSnapshot().context)
+    expect(terseA).toEqual(['Hello world'])
+
+    // Type in Editor B — should edit doc normally (no suggest mode)
+    await userEvent.click(locatorB)
+    editorB.send({type: 'focus'})
+    editorB.send({
+      type: 'select',
+      at: {
+        anchor: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 0},
+        focus: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 0},
+      },
+    })
+    await userEvent.type(locatorB, 'ZZ')
+
+    // Verify: Editor B doc was edited
+    await vi.waitFor(() => {
+      const terseB = getTersePt(editorB.getSnapshot().context)
+      expect(terseB[0]).toContain('ZZ')
+    })
+
+    unregisterA()
   })
 })
