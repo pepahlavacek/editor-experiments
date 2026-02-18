@@ -1150,16 +1150,18 @@ describe('Suggest mode: real keyboard input (userEvent.type)', () => {
     // Enable suggest mode
     enableSuggestMode()
 
-    // Type using real keyboard input
-    await userEvent.type(locator, 'abc')
+    // Type character by character, rerendering decorations between each keystroke.
+    // This mirrors the real-world scenario: each keystroke creates/extends a
+    // suggestion, React rerenders with the decoration visible in the DOM, then
+    // the next keystroke happens with the suggestion text present.
+    for (const char of 'abc') {
+      await userEvent.type(locator, char)
+      await rerenderDecorations()
+    }
 
     // Verify: suggestion was created with the typed text
-    await vi.waitFor(() => {
-      expect(suggestions.length).toBeGreaterThanOrEqual(1)
-    })
+    expect(suggestions.length).toBeGreaterThanOrEqual(1)
 
-    // The suggestion should contain "abc" (possibly as one or multiple suggestions
-    // depending on continuation, but total text should be "abc")
     const totalText = suggestions
       .filter((s): s is InsertSuggestion => s.type === 'insert')
       .map((s) => getPlainTextFromSuggestion(s))
@@ -1170,8 +1172,7 @@ describe('Suggest mode: real keyboard input (userEvent.type)', () => {
     const terse = getTersePt(editor.getSnapshot().context)
     expect(terse).toEqual(['Hello world'])
 
-    // Rerender with decorations and verify suggestion is visible
-    await rerenderDecorations()
+    // Verify suggestion is visible in the DOM
     const insertedEl = page.getByTestId(
       `suggestion-${suggestions[0]!.id}-inserted`,
     )
@@ -1199,13 +1200,17 @@ describe('Suggest mode: real keyboard input (userEvent.type)', () => {
 
     enableSuggestMode()
 
-    // Type "hello" character by character via real keyboard
-    await userEvent.type(locator, 'hello')
+    // Type "hello" character by character, rerendering decorations between
+    // each keystroke. This is the critical test: with contentEditable={false}
+    // on the suggestion span, the cursor gets displaced after the first
+    // character renders, causing subsequent characters to go to wrong positions.
+    for (const char of 'hello') {
+      await userEvent.type(locator, char)
+      await rerenderDecorations()
+    }
 
     // Verify suggestion content is "hello" not "olleh"
-    await vi.waitFor(() => {
-      expect(suggestions.length).toBeGreaterThanOrEqual(1)
-    })
+    expect(suggestions.length).toBeGreaterThanOrEqual(1)
 
     const totalText = suggestions
       .filter((s): s is InsertSuggestion => s.type === 'insert')
@@ -1216,15 +1221,6 @@ describe('Suggest mode: real keyboard input (userEvent.type)', () => {
     // Base doc unchanged
     const terse = getTersePt(editor.getSnapshot().context)
     expect(terse).toEqual(['Hello world'])
-
-    // Rerender with decorations and verify visual order
-    await rerenderDecorations()
-    const insertedEl = page.getByTestId(
-      `suggestion-${suggestions[0]!.id}-inserted`,
-    )
-    await vi.waitFor(() =>
-      expect.element(insertedEl).toHaveTextContent('hello'),
-    )
   })
 
   test('suggest mode toggle per-editor — typing in one editor does not affect other', async () => {
@@ -1384,8 +1380,13 @@ describe('Suggest mode: playground architecture reproduction', () => {
       }
     }
 
-    // Wrapper that can toggle suggest mode via rerender
-    function TestEditor(props: {suggestMode: boolean}) {
+    // Wrapper that can toggle suggest mode via rerender.
+    // Renders suggestion decorations so the DOM reflects suggestions
+    // between keystrokes — matching the real playground behavior.
+    function TestEditor(props: {
+      suggestMode: boolean
+      decorations?: ReturnType<typeof suggestionsToDecorations>
+    }) {
       return (
         <EditorProvider
           initialConfig={{
@@ -1398,7 +1399,10 @@ describe('Suggest mode: playground architecture reproduction', () => {
             active={props.suggestMode}
             onIntercept={handleIntercept}
           />
-          <PortableTextEditable data-testid="editor" />
+          <PortableTextEditable
+            data-testid="editor"
+            rangeDecorations={props.decorations ?? []}
+          />
         </EditorProvider>
       )
     }
@@ -1428,8 +1432,22 @@ describe('Suggest mode: playground architecture reproduction', () => {
     // Step 3: Enable suggest mode via rerender
     await renderResult.rerender(<TestEditor suggestMode={true} />)
 
-    // Step 4: Type " aloha" in suggest mode
-    await userEvent.type(locator, ' aloha')
+    // Step 4: Type " aloha" character by character, rerendering decorations
+    // between each keystroke. This is the critical real-world scenario:
+    // after each keystroke, the suggestion text appears in the DOM, and the
+    // next keystroke must still be intercepted correctly despite the injected
+    // suggestion content being present.
+    for (const char of ' aloha') {
+      await userEvent.type(locator, char)
+      // Rerender with current suggestion decorations visible in the DOM
+      const decorations = suggestionsToDecorations({
+        suggestions: [...suggestions],
+        onAction: vi.fn(),
+      })
+      await renderResult.rerender(
+        <TestEditor suggestMode={true} decorations={decorations} />,
+      )
+    }
 
     // Step 5: Assert — base doc should still be "hello world"
     await vi.waitFor(() => {

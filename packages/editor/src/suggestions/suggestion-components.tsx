@@ -61,7 +61,6 @@ export function ReplaceSuggestionComponent(
         {props.children}
       </span>
       <span
-        contentEditable={false}
         data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
@@ -88,7 +87,10 @@ export function ReplaceSuggestionComponent(
  * Renders inserted text at a collapsed (zero-width) position.
  *
  * Children contain the zero-width space that keeps Slate happy.
- * The inserted text is injected as a non-editable inline element.
+ * The inserted text is injected as an inline element alongside the
+ * Slate leaf. Slate ignores it (no data-slate-* attributes), and
+ * any keystrokes into the suggestion text still go through
+ * beforeinput → behavior system → suggest mode interception.
  * @alpha
  */
 export function InsertSuggestionComponent(
@@ -113,7 +115,6 @@ export function InsertSuggestionComponent(
       data-suggestion-type="insert"
     >
       <span
-        contentEditable={false}
         data-testid={`suggestion-${props.suggestionId}-inserted`}
         data-suggestion-role="inserted-text"
         style={{
