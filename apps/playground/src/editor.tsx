@@ -90,7 +90,7 @@ import {ReanchorButtons} from './reanchor-simulation'
 import {SlashCommandPickerPlugin} from './slash-command-picker'
 import {SuggestModePlugin} from './suggest-mode-plugin'
 import {
-  SuggestionPanel,
+  SuggestionCreationControls,
   SuggestionServiceToggle,
   useSuggestionDecorations,
 } from './suggestion-panel'
@@ -111,6 +111,7 @@ export function Editor(props: {
     enabled: boolean
     toggle: () => void
   }
+  activeEditorRef: React.RefObject<import('@portabletext/editor').Editor | null>
 }) {
   const value = useSelector(props.editorRef, (s) => s.context.value)
   const keyGenerator = useSelector(
@@ -192,6 +193,7 @@ export function Editor(props: {
             onToggleRemoteFixUp={props.onToggleRemoteFixUp}
             onReanchor={props.onReanchor}
             suggestionService={props.suggestionService}
+            activeEditorRef={props.activeEditorRef}
           />
         </EditorProvider>
       </ErrorBoundary>
@@ -221,9 +223,23 @@ function EditorWithSuggestions(props: {
     enabled: boolean
     toggle: () => void
   }
+  activeEditorRef: React.RefObject<import('@portabletext/editor').Editor | null>
 }) {
   const {featureFlags, suggestionService} = props
   const editor = useEditor()
+
+  // Register this editor as the active editor for the suggestion panel.
+  // The ref is shared across all editors — last one rendered wins.
+  // This is fine for the playground where we typically have one editor.
+  useEffect(() => {
+    const ref = props.activeEditorRef as {current: typeof editor | null}
+    ref.current = editor
+    return () => {
+      if (ref.current === editor) {
+        ref.current = null
+      }
+    }
+  }, [editor, props.activeEditorRef])
 
   // Suggest mode state is derived from the state machine — single source of truth.
   const suggestMode = useEditorSelector(editor, (s) => s.context.suggesting)
@@ -311,7 +327,7 @@ function EditorWithSuggestions(props: {
         </ErrorBoundary>
         {props.loading ? <Spinner /> : null}
       </div>
-      <SuggestionPanel
+      <SuggestionCreationControls
         service={suggestionService.service}
         suggestions={suggestionService.suggestions}
         enabled={suggestionService.enabled}

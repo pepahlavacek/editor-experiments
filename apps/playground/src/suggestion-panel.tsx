@@ -8,7 +8,7 @@ import {
   type RangeDecoration,
   type Suggestion,
 } from '@portabletext/editor'
-import {SparklesIcon, Trash2Icon, ZapIcon} from 'lucide-react'
+import {CheckIcon, SparklesIcon, Trash2Icon, XIcon, ZapIcon} from 'lucide-react'
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {TooltipTrigger} from 'react-aria-components'
 import {FakeSuggestionService} from './fake-suggestion-service'
@@ -23,17 +23,9 @@ import {Tooltip} from './primitives/tooltip'
  * - Delete: select the suggestion range, delete (insert empty text)
  * - Replace: select the suggestion range, insert replacement text
  */
-/**
- * Apply a suggestion's change to the editor document.
- *
- * - Insert: place cursor at suggestion position, insert text
- * - Delete: select the suggestion range, delete (insert empty text)
- * - Replace: select the suggestion range, insert replacement text
- */
 function applySuggestionToEditor(editor: Editor, suggestion: Suggestion) {
   switch (suggestion.type) {
     case 'insert': {
-      // Place cursor at the insert position (collapsed selection)
       const text = getPlainTextFromSuggestion(suggestion)
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
@@ -41,13 +33,11 @@ function applySuggestionToEditor(editor: Editor, suggestion: Suggestion) {
       break
     }
     case 'delete':
-      // Select the range and delete it
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
       editor.send({type: 'insert.text', text: ''})
       break
     case 'replace': {
-      // Select the range and replace with new text
       const text = getPlainTextFromSuggestion(suggestion)
       editor.send({type: 'focus'})
       editor.send({type: 'select', at: suggestion.selection})
@@ -117,42 +107,20 @@ export function useSharedSuggestionService(): {
  * Must be called inside an EditorProvider — uses useEditor() to
  * apply accepted suggestions to the document.
  *
- * Each editor instance gets its own decorations with its own onAction
- * callback, so accept/reject applies to the correct editor.
+ * Each editor instance gets its own decorations for visual rendering.
+ * Accept/reject is handled in the SuggestionListPanel (Inspector tab).
  */
 export function useSuggestionDecorations(props: {
   service: FakeSuggestionService
   suggestions: Suggestion[]
   enabled: boolean
 }): RangeDecoration[] {
-  const editor = useEditor()
-
-  const onAction = useCallback(
-    (event: {action: 'accept' | 'reject'; suggestion: Suggestion}) => {
-      if (event.action === 'accept') {
-        // Bypass suggest mode so the editor operations don't get intercepted
-        // and turned into more suggestions.
-        props.service.isBypassing = true
-        try {
-          applySuggestionToEditor(editor, event.suggestion)
-        } finally {
-          props.service.isBypassing = false
-        }
-        props.service.acceptSuggestion(event.suggestion.id)
-      } else {
-        props.service.rejectSuggestion(event.suggestion.id)
-      }
-    },
-    [editor, props.service],
-  )
-
   return useMemo(() => {
     if (!props.enabled || props.suggestions.length === 0) return []
     return suggestionsToDecorations({
       suggestions: props.suggestions,
-      onAction,
     })
-  }, [props.enabled, props.suggestions, onAction])
+  }, [props.enabled, props.suggestions])
 }
 
 /**
@@ -188,10 +156,37 @@ export function SuggestionServiceToggle(props: {
 }
 
 /**
- * Panel for creating and managing suggestions.
- * Must be rendered inside an EditorProvider.
+ * Accept a suggestion: bypass suggest mode, apply to editor, remove from service.
  */
-export function SuggestionPanel(props: {
+function acceptSuggestion(
+  editor: Editor,
+  suggestion: Suggestion,
+  service: FakeSuggestionService,
+) {
+  service.isBypassing = true
+  try {
+    applySuggestionToEditor(editor, suggestion)
+  } finally {
+    service.isBypassing = false
+  }
+  service.acceptSuggestion(suggestion.id)
+}
+
+/**
+ * Reject a suggestion: just remove it from the service.
+ */
+function rejectSuggestion(
+  suggestion: Suggestion,
+  service: FakeSuggestionService,
+) {
+  service.rejectSuggestion(suggestion.id)
+}
+
+/**
+ * Suggestion creation controls — rendered inside EditorProvider.
+ * Provides insert/replace/delete/chaos buttons for testing.
+ */
+export function SuggestionCreationControls(props: {
   service: FakeSuggestionService
   suggestions: Suggestion[]
   enabled: boolean
@@ -281,10 +276,6 @@ export function SuggestionPanel(props: {
     }
   }, [props.service, selection, hasExpandedSelection])
 
-  const handleClear = useCallback(() => {
-    props.service.clear()
-  }, [props.service])
-
   if (!props.enabled) return null
 
   return (
@@ -303,15 +294,6 @@ export function SuggestionPanel(props: {
           <span className="text-[10px] text-amber-500 font-mono">
             {pendingCount} pending…
           </span>
-        )}
-        <div className="flex-1" />
-        {props.suggestions.length > 0 && (
-          <TooltipTrigger>
-            <Button variant="ghost" size="sm" onPress={handleClear}>
-              <Trash2Icon className="size-3" />
-            </Button>
-            <Tooltip>Clear all suggestions</Tooltip>
-          </TooltipTrigger>
         )}
       </div>
 
@@ -385,32 +367,140 @@ export function SuggestionPanel(props: {
           </Tooltip>
         </TooltipTrigger>
       </div>
+    </div>
+  )
+}
 
-      {props.suggestions.length > 0 && (
-        <div className="mt-2 space-y-1">
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider">
-            Active ({props.suggestions.length})
-          </span>
-          {props.suggestions.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400"
-            >
-              <SuggestionTypeBadge type={s.type} />
-              <span className="font-mono text-[10px] truncate flex-1">
-                {s.id}
-              </span>
-              <button
-                type="button"
-                className="text-red-400 hover:text-red-600 text-[10px]"
-                onClick={() => props.service.removeSuggestion(s.id)}
-              >
-                ✗
-              </button>
-            </div>
-          ))}
+/**
+ * Suggestion list with accept/reject buttons.
+ * Does NOT require EditorProvider — accepts an editor ref for applying suggestions.
+ *
+ * Used in the Inspector tab bar, outside any EditorProvider.
+ */
+export function SuggestionListPanel(props: {
+  service: FakeSuggestionService
+  suggestions: Suggestion[]
+  enabled: boolean
+  editorRef: React.RefObject<Editor | null>
+}) {
+  const handleClear = useCallback(() => {
+    props.service.clear()
+  }, [props.service])
+
+  if (!props.enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+        <SparklesIcon className="size-8 text-gray-300 dark:text-gray-600" />
+        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+          Suggestions disabled
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Enable suggest mode in the editor footer
+        </p>
+      </div>
+    )
+  }
+
+  if (props.suggestions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+        <SparklesIcon className="size-8 text-gray-300 dark:text-gray-600" />
+        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+          No suggestions
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Type in suggest mode to create suggestions
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          {props.suggestions.length} suggestion
+          {props.suggestions.length !== 1 ? 's' : ''}
+        </span>
+        <TooltipTrigger>
+          <Button variant="ghost" size="sm" onPress={handleClear}>
+            <Trash2Icon className="size-3" />
+          </Button>
+          <Tooltip>Clear all suggestions</Tooltip>
+        </TooltipTrigger>
+      </div>
+      <div className="space-y-2">
+        {props.suggestions.map((s) => (
+          <SuggestionCard
+            key={s.id}
+            suggestion={s}
+            service={props.service}
+            editorRef={props.editorRef}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SuggestionCard(props: {
+  suggestion: Suggestion
+  service: FakeSuggestionService
+  editorRef: React.RefObject<Editor | null>
+}) {
+  const {suggestion, service, editorRef} = props
+  const text =
+    suggestion.type !== 'delete' ? getPlainTextFromSuggestion(suggestion) : null
+
+  const handleAccept = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    acceptSuggestion(editor, suggestion, service)
+  }, [editorRef, suggestion, service])
+
+  const handleReject = useCallback(() => {
+    rejectSuggestion(suggestion, service)
+  }, [suggestion, service])
+
+  return (
+    <div className="rounded border border-gray-200 dark:border-gray-700 p-2 text-xs">
+      <div className="flex items-center gap-1.5 mb-1">
+        <SuggestionTypeBadge type={suggestion.type} />
+        <span className="font-mono text-[10px] text-gray-400 truncate flex-1">
+          {suggestion.id}
+        </span>
+      </div>
+      {text && (
+        <div className="mb-1.5 text-gray-700 dark:text-gray-300">
+          {suggestion.type === 'insert' && (
+            <span className="text-green-600 dark:text-green-400">+ {text}</span>
+          )}
+          {suggestion.type === 'replace' && (
+            <span className="text-blue-600 dark:text-blue-400">→ {text}</span>
+          )}
         </div>
       )}
+      {suggestion.type === 'delete' && (
+        <div className="mb-1.5 text-red-500 dark:text-red-400 line-through opacity-70">
+          (selected text)
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <TooltipTrigger>
+          <Button variant="secondary" size="sm" onPress={handleAccept}>
+            <CheckIcon className="size-3 text-green-600 dark:text-green-400" />
+            <span>Accept</span>
+          </Button>
+          <Tooltip>Apply this suggestion to the document</Tooltip>
+        </TooltipTrigger>
+        <TooltipTrigger>
+          <Button variant="ghost" size="sm" onPress={handleReject}>
+            <XIcon className="size-3 text-red-500 dark:text-red-400" />
+            <span>Reject</span>
+          </Button>
+          <Tooltip>Discard this suggestion</Tooltip>
+        </TooltipTrigger>
+      </div>
     </div>
   )
 }

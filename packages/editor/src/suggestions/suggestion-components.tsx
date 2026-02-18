@@ -8,10 +8,14 @@ import {getPlainTextFromSuggestion} from '../types/suggestion'
  * These are intentionally minimal — inline styles only, no framework dependencies.
  * Consumers can provide their own components via SuggestionConfig for custom styling.
  *
+ * The components render colored text only — no interactive elements.
+ * Accept/reject actions should be handled outside the editable area
+ * (e.g., in a sidebar panel) to avoid contentEditable DOM conflicts.
+ *
  * The components use data attributes for external CSS targeting:
  * - [data-suggestion-id] — unique suggestion identifier
  * - [data-suggestion-type] — 'replace' | 'insert' | 'delete'
- * - [data-suggestion-role] — 'deleted-text' | 'inserted-text' | 'actions'
+ * - [data-suggestion-role] — 'deleted-text' | 'inserted-text'
  *
  * @alpha
  */
@@ -31,8 +35,6 @@ export interface SuggestionComponentProps extends PropsWithChildren {
 export function ReplaceSuggestionComponent(
   props: SuggestionComponentProps & {
     content: PortableTextBlock[]
-    onAccept?: () => void
-    onReject?: () => void
   },
 ): ReactElement<any> {
   // Extract plain text for rendering — rich text rendering is Phase 2B
@@ -70,16 +72,11 @@ export function ReplaceSuggestionComponent(
           backgroundColor: 'rgba(22, 163, 74, 0.1)',
           borderRadius: '2px',
           padding: '0 1px',
+          userSelect: 'none',
         }}
       >
         {displayText}
       </span>
-      {(props.onAccept || props.onReject) && (
-        <SuggestionActionButtons
-          onAccept={props.onAccept}
-          onReject={props.onReject}
-        />
-      )}
     </span>
   )
 }
@@ -97,8 +94,6 @@ export function ReplaceSuggestionComponent(
 export function InsertSuggestionComponent(
   props: SuggestionComponentProps & {
     content: PortableTextBlock[]
-    onAccept?: () => void
-    onReject?: () => void
   },
 ): ReactElement<any> {
   // Extract plain text for rendering — rich text rendering is Phase 2B
@@ -124,16 +119,11 @@ export function InsertSuggestionComponent(
           backgroundColor: 'rgba(22, 163, 74, 0.1)',
           borderRadius: '2px',
           padding: '0 1px',
+          userSelect: 'none',
         }}
       >
         {displayText}
       </span>
-      {(props.onAccept || props.onReject) && (
-        <SuggestionActionButtons
-          onAccept={props.onAccept}
-          onReject={props.onReject}
-        />
-      )}
       {props.children}
     </span>
   )
@@ -144,10 +134,7 @@ export function InsertSuggestionComponent(
  * @alpha
  */
 export function DeleteSuggestionComponent(
-  props: SuggestionComponentProps & {
-    onAccept?: () => void
-    onReject?: () => void
-  },
+  props: SuggestionComponentProps,
 ): ReactElement<any> {
   return (
     <span
@@ -166,76 +153,6 @@ export function DeleteSuggestionComponent(
       >
         {props.children}
       </span>
-      {(props.onAccept || props.onReject) && (
-        <SuggestionActionButtons
-          onAccept={props.onAccept}
-          onReject={props.onReject}
-        />
-      )}
-    </span>
-  )
-}
-
-/**
- * Inline accept/reject buttons.
- * Rendered as non-editable inline content to prevent Slate model corruption.
- */
-function SuggestionActionButtons(props: {
-  onAccept?: () => void
-  onReject?: () => void
-}): ReactElement<any> {
-  return (
-    <span
-      contentEditable={false}
-      data-suggestion-role="actions"
-      style={{
-        userSelect: 'none',
-        display: 'inline-flex',
-        gap: '1px',
-        marginLeft: '2px',
-        verticalAlign: 'middle',
-      }}
-    >
-      {props.onAccept && (
-        <button
-          type="button"
-          title="Accept suggestion"
-          onClick={props.onAccept}
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            border: 'none',
-            background: 'rgba(22, 163, 74, 0.15)',
-            color: '#16a34a',
-            cursor: 'pointer',
-            borderRadius: '3px',
-            padding: '0 3px',
-            fontSize: '0.75rem',
-            lineHeight: '1.25rem',
-          }}
-        >
-          ✓
-        </button>
-      )}
-      {props.onReject && (
-        <button
-          type="button"
-          title="Reject suggestion"
-          onClick={props.onReject}
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            border: 'none',
-            background: 'rgba(220, 38, 38, 0.15)',
-            color: '#dc2626',
-            cursor: 'pointer',
-            borderRadius: '3px',
-            padding: '0 3px',
-            fontSize: '0.75rem',
-            lineHeight: '1.25rem',
-          }}
-        >
-          ✗
-        </button>
-      )}
     </span>
   )
 }

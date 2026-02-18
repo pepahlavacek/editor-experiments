@@ -1,13 +1,16 @@
+import type {Editor, Suggestion} from '@portabletext/editor'
 import {useActorRef, useSelector} from '@xstate/react'
 import {
   CheckIcon,
   CopyIcon,
   HistoryIcon,
+  SparklesIcon,
   TextCursorIcon,
   TrashIcon,
 } from 'lucide-react'
 import {useEffect, useState} from 'react'
 import {TooltipTrigger, type Key} from 'react-aria-components'
+import type {FakeSuggestionService} from './fake-suggestion-service'
 import {highlightMachine} from './highlight-json-machine'
 import {MarkdownLogo, PortableTextLogo, ReactLogo} from './logos'
 import {PatchesList} from './patches-list'
@@ -20,6 +23,7 @@ import {Spinner} from './primitives/spinner'
 import {Tab, TabList, TabPanel, Tabs} from './primitives/tabs'
 import {Tooltip} from './primitives/tooltip'
 import {RangeDecorationDebugger} from './range-decoration-debugger'
+import {SuggestionListPanel} from './suggestion-panel'
 
 type TabId =
   | 'output'
@@ -27,8 +31,18 @@ type TabId =
   | 'decorations'
   | 'react-preview'
   | 'markdown-preview'
+  | 'suggestions'
 
-export function Inspector(props: {playgroundRef: PlaygroundActorRef}) {
+export function Inspector(props: {
+  playgroundRef: PlaygroundActorRef
+  suggestionService: {
+    service: FakeSuggestionService
+    suggestions: Suggestion[]
+    enabled: boolean
+    toggle: () => void
+  }
+  activeEditorRef: React.RefObject<Editor | null>
+}) {
   const [activeTab, setActiveTab] = useState<TabId>('output')
 
   const handleTabChange = (key: Key) => {
@@ -59,6 +73,17 @@ export function Inspector(props: {playgroundRef: PlaygroundActorRef}) {
             <span className="flex items-center gap-1.5">
               <TextCursorIcon className="size-3" />
               <span className="hidden sm:inline">Decorations</span>
+            </span>
+          </Tab>
+          <Tab id="suggestions">
+            <span className="flex items-center gap-1.5">
+              <SparklesIcon className="size-3" />
+              <span className="hidden sm:inline">Suggestions</span>
+              {props.suggestionService.suggestions.length > 0 && (
+                <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1 rounded">
+                  {props.suggestionService.suggestions.length}
+                </span>
+              )}
             </span>
           </Tab>
           <Tab id="react-preview">
@@ -92,6 +117,17 @@ export function Inspector(props: {playgroundRef: PlaygroundActorRef}) {
       <TabPanel id="decorations" className="flex-1 min-h-0">
         <Container className="h-full overflow-clip">
           <RangeDecorationDebugger playgroundRef={props.playgroundRef} />
+        </Container>
+      </TabPanel>
+
+      <TabPanel id="suggestions" className="flex-1 min-h-0">
+        <Container className="h-full overflow-clip">
+          <SuggestionListPanel
+            service={props.suggestionService.service}
+            suggestions={props.suggestionService.suggestions}
+            enabled={props.suggestionService.enabled}
+            editorRef={props.activeEditorRef}
+          />
         </Container>
       </TabPanel>
 

@@ -1,6 +1,10 @@
-import type {EditorSelection, RangeDecoration} from '@portabletext/editor'
+import type {
+  Editor as EditorInstance,
+  EditorSelection,
+  RangeDecoration,
+} from '@portabletext/editor'
 import {useSelector} from '@xstate/react'
-import {useCallback} from 'react'
+import {useCallback, useRef} from 'react'
 import {Editor} from './editor'
 import {PlaygroundFeatureFlagsContext} from './feature-flags'
 import {Inspector} from './inspector'
@@ -27,6 +31,10 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
 
   // Shared suggestion service — all editors see the same suggestions
   const suggestionService = useSharedSuggestionService()
+
+  // Ref to the active editor instance — used by the Inspector's Suggestions tab
+  // to apply accepted suggestions to the document.
+  const activeEditorRef = useRef<EditorInstance | null>(null)
 
   const onReanchor = useCallback(
     (decoration: RangeDecoration, newSelection: EditorSelection) => {
@@ -63,12 +71,17 @@ export function Editors(props: {playgroundRef: PlaygroundActorRef}) {
                 }
                 onReanchor={onReanchor}
                 suggestionService={suggestionService}
+                activeEditorRef={activeEditorRef}
               />
             ))}
           </PlaygroundFeatureFlagsContext.Provider>
         </div>
         {showInspector ? (
-          <Inspector playgroundRef={props.playgroundRef} />
+          <Inspector
+            playgroundRef={props.playgroundRef}
+            suggestionService={suggestionService}
+            activeEditorRef={activeEditorRef}
+          />
         ) : null}
       </div>
     </div>

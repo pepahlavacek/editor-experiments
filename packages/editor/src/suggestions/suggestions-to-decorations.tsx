@@ -36,12 +36,6 @@ function suggestionToDecoration(
   config: SuggestionConfig,
 ): RangeDecoration {
   const onMoved = createOnMoved(suggestion, config)
-  const onAccept = config.onAction
-    ? () => config.onAction!({action: 'accept', suggestion})
-    : undefined
-  const onReject = config.onAction
-    ? () => config.onAction!({action: 'reject', suggestion})
-    : undefined
 
   switch (suggestion.type) {
     case 'replace':
@@ -52,8 +46,6 @@ function suggestionToDecoration(
           <ReplaceSuggestionComponent
             suggestionId={suggestion.id}
             content={suggestion.content}
-            onAccept={onAccept}
-            onReject={onReject}
           >
             {props.children}
           </ReplaceSuggestionComponent>
@@ -69,8 +61,6 @@ function suggestionToDecoration(
           <InsertSuggestionComponent
             suggestionId={suggestion.id}
             content={suggestion.content}
-            onAccept={onAccept}
-            onReject={onReject}
           >
             {props.children}
           </InsertSuggestionComponent>
@@ -83,11 +73,7 @@ function suggestionToDecoration(
         id: suggestion.id,
         selection: suggestion.selection,
         component: (props: PropsWithChildren) => (
-          <DeleteSuggestionComponent
-            suggestionId={suggestion.id}
-            onAccept={onAccept}
-            onReject={onReject}
-          >
+          <DeleteSuggestionComponent suggestionId={suggestion.id}>
             {props.children}
           </DeleteSuggestionComponent>
         ),
