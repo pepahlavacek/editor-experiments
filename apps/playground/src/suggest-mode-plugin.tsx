@@ -170,20 +170,8 @@ function removeLastCharFromContent(
  * Backspace shrinks the current insert suggestion. Delete extends
  * adjacent delete suggestions.
  */
-export function SuggestModePlugin(props: {
-  active: boolean
-  service: FakeSuggestionService
-}) {
+export function SuggestModePlugin(props: {service: FakeSuggestionService}) {
   const editor = useEditor()
-  const activeRef = useRef(props.active)
-  activeRef.current = props.active
-
-  // Trace prop changes
-  useEffect(() => {
-    console.log(
-      `[SuggestModePlugin:render] active prop changed to: ${props.active}`,
-    )
-  }, [props.active])
 
   const serviceRef = useRef(props.service)
   serviceRef.current = props.service
@@ -416,16 +404,10 @@ export function SuggestModePlugin(props: {
       `[SuggestModePlugin:useEffect] Registering behavior. editor=${!!editor} editorId=${(editor as any)?._internal?.slateEditor?.instance?.id ?? 'unknown'}`,
     )
     const behavior = createSuggestModeBehavior({
+      // isActive() is used as a veto: return false during bypass (accept/reject)
+      // to let mutations through even when the state machine says suggesting.
       isActive: () => {
-        const active = activeRef.current
-        const bypassing = serviceRef.current.isBypassing
-        // Only log when active to avoid spam
-        if (active) {
-          console.log(
-            `[SuggestModePlugin:isActive] active=${active} bypassing=${bypassing} → ${active && !bypassing}`,
-          )
-        }
-        return active && !bypassing
+        return !serviceRef.current.isBypassing
       },
       onIntercept: (interceptEvent) => {
         console.log(

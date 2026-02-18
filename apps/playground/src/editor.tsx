@@ -223,13 +223,13 @@ function EditorWithSuggestions(props: {
   }
 }) {
   const {featureFlags, suggestionService} = props
+  const editor = useEditor()
 
-  // Per-editor suggest mode state — each editor independently controls
-  // whether typing creates suggestions or edits the document.
-  const [suggestMode, setSuggestMode] = useState(false)
+  // Suggest mode state is derived from the state machine — single source of truth.
+  const suggestMode = useEditorSelector(editor, (s) => s.context.suggesting)
   const toggleSuggestMode = useCallback(() => {
-    setSuggestMode((prev) => !prev)
-  }, [])
+    editor.send({type: 'update suggestMode', suggesting: !suggestMode})
+  }, [editor, suggestMode])
 
   // Sync: when suggest mode turns on, ensure the shared suggestion service is enabled.
   // This runs as an effect (after render) to avoid setState-on-parent-during-child-setState.
@@ -256,10 +256,7 @@ function EditorWithSuggestions(props: {
 
   return (
     <Container className="flex flex-col overflow-clip">
-      <SuggestModePlugin
-        active={suggestMode}
-        service={suggestionService.service}
-      />
+      <SuggestModePlugin service={suggestionService.service} />
       {featureFlags.emojiPickerPlugin ? <EmojiPickerPlugin /> : null}
       {featureFlags.mentionPickerPlugin ? <MentionPickerPlugin /> : null}
       {featureFlags.slashCommandPlugin ? <SlashCommandPickerPlugin /> : null}
@@ -766,21 +763,6 @@ function EditorFooter(props: {
             suggestionCount={props.suggestionService.suggestions.length}
             onToggle={props.suggestionService.toggle}
           />
-          <TooltipTrigger>
-            <ToggleButton
-              variant="ghost"
-              size="sm"
-              isSelected={props.suggestionService.suggestMode}
-              onChange={props.suggestionService.toggleSuggestMode}
-            >
-              <MessageSquarePlusIcon className="size-3" />
-            </ToggleButton>
-            <Tooltip>
-              {props.suggestionService.suggestMode
-                ? 'Suggest mode ON — typing creates suggestions'
-                : 'Suggest mode OFF — typing edits document'}
-            </Tooltip>
-          </TooltipTrigger>
         </div>
         <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
         <div className="flex items-center gap-0.5">
@@ -803,6 +785,21 @@ function EditorFooter(props: {
               )}
             </ToggleButton>
             <Tooltip>{props.readOnly ? 'Read-only' : 'Editable'}</Tooltip>
+          </TooltipTrigger>
+          <TooltipTrigger>
+            <ToggleButton
+              variant="ghost"
+              size="sm"
+              isSelected={props.suggestionService.suggestMode}
+              onChange={props.suggestionService.toggleSuggestMode}
+            >
+              <MessageSquarePlusIcon className="size-3" />
+            </ToggleButton>
+            <Tooltip>
+              {props.suggestionService.suggestMode
+                ? 'Suggest mode ON — typing creates suggestions'
+                : 'Suggest mode OFF — typing edits document'}
+            </Tooltip>
           </TooltipTrigger>
           <TooltipTrigger>
             <ToggleButton

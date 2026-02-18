@@ -98,15 +98,21 @@ export interface SuggestModeInterceptEvent {
  */
 export interface SuggestModeBehaviorConfig {
   /**
-   * Returns true when suggest mode is active.
-   * When false, events pass through to normal PTE handling.
+   * Controls whether the behavior should intercept mutation events.
    *
-   * @deprecated Use `editor.send({type: 'update suggestMode', suggesting: true})`
-   * to control suggesting mode via the state machine instead. When the state
-   * machine is in suggesting mode, this flag is ignored.
+   * When the state machine is in suggesting mode (`snapshot.context.suggesting`
+   * is `true`), this callback can **veto** interception by returning `false`.
+   * This is useful for temporarily bypassing suggest mode during operations
+   * like accepting a suggestion, where mutations must reach the document.
    *
-   * This option is kept for backwards compatibility and will be removed in a
-   * future major version.
+   * When the state machine is NOT in suggesting mode, returning `true` enables
+   * interception as a legacy fallback — but this causes a snapshot inconsistency
+   * (`snapshot.context.suggesting` will report `false`) and emits a deprecation
+   * warning. Migrate to `editor.send({type: 'update suggestMode', suggesting: true})`
+   * instead.
+   *
+   * @deprecated for enabling suggest mode. Use the state machine API instead.
+   * Will be kept as a veto/bypass mechanism in future versions.
    */
   isActive?: () => boolean
   /**
@@ -152,24 +158,28 @@ export function createSuggestModeBehavior(
   return defineBehavior({
     on: '*',
     guard: ({event, snapshot}) => {
-      // State machine is authoritative when in suggesting mode.
-      // isActive() is ONLY consulted as a legacy fallback when the state
-      // machine is NOT in suggesting mode.
       const stateMachineSuggesting = snapshot.context.suggesting
-      const legacyFlagActive =
-        !stateMachineSuggesting && config.isActive?.() === true
+      const isActiveResult = config.isActive?.()
 
-      if (legacyFlagActive) {
-        console.warn(
-          'Suggest mode: isActive() returned true but the state machine is not in suggesting mode. ' +
-            'This causes snapshot.context.suggesting to report false while mutations are intercepted. ' +
-            'Migrate to editor.send({type: "update suggestMode", suggesting: true}) instead. ' +
-            'The isActive() option is deprecated and will be removed in a future major version.',
-        )
+      if (stateMachineSuggesting) {
+        // State machine says suggesting. isActive() can veto (return false)
+        // to temporarily bypass interception (e.g., during accept/reject).
+        if (isActiveResult === false) return false
+      } else {
+        // State machine is NOT in suggesting mode.
+        // isActive() returning true is a legacy fallback — warn about it.
+        if (isActiveResult === true) {
+          console.warn(
+            'Suggest mode: isActive() returned true but the state machine is not in suggesting mode. ' +
+              'This causes snapshot.context.suggesting to report false while mutations are intercepted. ' +
+              'Migrate to editor.send({type: "update suggestMode", suggesting: true}) instead. ' +
+              'The isActive() option is deprecated and will be removed in a future major version.',
+          )
+        } else {
+          return false
+        }
       }
 
-      const active = stateMachineSuggesting || legacyFlagActive
-      if (!active) return false
       if (!isMutationEvent(event)) return false
       return true
     },

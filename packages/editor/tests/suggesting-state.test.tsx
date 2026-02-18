@@ -354,6 +354,57 @@ describe('Suggesting state: backwards compatibility', () => {
     })
   })
 
+  test('isActive returning false vetoes interception even when state machine says suggesting', async () => {
+    let bypassing = false
+    const interceptedEvents: SuggestModeInterceptEvent[] = []
+
+    const behavior = createSuggestModeBehavior({
+      isActive: () => !bypassing,
+      onIntercept: (interceptEvent) => {
+        interceptedEvents.push(interceptEvent)
+      },
+    })
+
+    const {editor, locator} = await createTestEditor({
+      initialValue: helloWorldValue(),
+    })
+
+    editor.registerBehavior({behavior})
+
+    // Enable suggesting via state machine
+    editor.send({type: 'update suggestMode', suggesting: true})
+    await vi.waitFor(() => {
+      expect(editor.getSnapshot().context.suggesting).toBe(true)
+    })
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+        focus: {path: [{_key: 'b1'}, 'children', {_key: 's1'}], offset: 5},
+      },
+    })
+
+    // Normal suggesting mode — mutations intercepted
+    editor.send({type: 'insert.text', text: 'X'})
+    expect(interceptedEvents).toHaveLength(1)
+
+    // Bypass mode — mutations pass through to document
+    bypassing = true
+    editor.send({type: 'insert.text', text: 'Y'})
+    expect(interceptedEvents).toHaveLength(1) // Still 1 — not intercepted
+
+    await vi.waitFor(() => {
+      expect(locator).toHaveTextContent('HelloY world')
+    })
+
+    // Resume suggesting — mutations intercepted again
+    bypassing = false
+    editor.send({type: 'insert.text', text: 'Z'})
+    expect(interceptedEvents).toHaveLength(2)
+  })
+
   test('existing readOnly behavior is unchanged', async () => {
     const {editor, locator} = await createTestEditor({
       initialValue: helloWorldValue(),
