@@ -7,11 +7,27 @@
  * - The base document remains unchanged
  * - Toggling suggest mode off restores normal editing
  * - Non-mutation events (selection, focus) pass through normally
+ *
+ * Phase 2B tests verify suggestion continuation:
+ * - Consecutive keystrokes at the same position extend a single suggestion
+ * - Backspace shrinks the current insert suggestion
+ * - Delete extends adjacent delete suggestions
  */
 import {describe, expect, test, vi} from 'vitest'
-import {createSuggestModeBehavior, type SuggestModeInterceptEvent} from '../src'
+import {
+  createSuggestModeBehavior,
+  type EditorSelection,
+  type InsertSuggestion,
+  type Suggestion,
+  type SuggestModeInterceptEvent,
+} from '../src'
 import {createTestEditor} from '../src/test/vitest'
-import type {InsertSuggestion, Suggestion} from '../src/types/suggestion'
+// ===========================================================================
+// Phase 2B: Suggestion continuation
+// ===========================================================================
+
+// Path / selection comparison helpers (mirrors suggest-mode-plugin.tsx)
+import type {EditorSelectionPoint} from '../src/types/editor'
 import {
   getPlainTextFromSuggestion,
   textToSuggestionContent,
@@ -378,5 +394,625 @@ describe('Suggest mode: basic interception', () => {
     await vi.waitFor(() => {
       expect(locator).toHaveTextContent('Hello world')
     })
+  })
+})
+
+function pathsEqual(
+  a: EditorSelectionPoint['path'],
+  b: EditorSelectionPoint['path'],
+): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i]
+    const bi = b[i]
+    if (typeof ai === 'string' && typeof bi === 'string') {
+      if (ai !== bi) return false
+    } else if (typeof ai === 'number' && typeof bi === 'number') {
+      if (ai !== bi) return false
+    } else if (typeof ai === 'object' && typeof bi === 'object') {
+      if (ai !== null && bi !== null && '_key' in ai && '_key' in bi) {
+        if (ai._key !== bi._key) return false
+      } else {
+        return false
+      }
+    } else {
+      return false
+    }
+  }
+  return true
+}
+
+function pointsEqual(
+  a: EditorSelectionPoint,
+  b: EditorSelectionPoint,
+): boolean {
+  return a.offset === b.offset && pathsEqual(a.path, b.path)
+}
+
+function selectionIsCollapsed(sel: NonNullable<EditorSelection>): boolean {
+  return pointsEqual(sel.anchor, sel.focus)
+}
+
+/**
+ * Set up a test editor with suggest mode behavior that implements
+ * Phase 2B continuation logic (matching SuggestModePlugin behavior).
+ *
+ * - Consecutive insert.text at the same position extends a single suggestion
+ * - delete.backward on an insert suggestion shrinks it
+ * - delete.backward/forward extends adjacent delete suggestions
+ */
+async function createContinuationEditor() {
+  const suggestions: Suggestion[] = []
+  let suggestModeActive = false
+  let nextId = 1
+
+  function findInsertAtPoint(
+    point: EditorSelectionPoint,
+  ): InsertSuggestion | undefined {
+    return suggestions.find(
+      (s): s is InsertSuggestion =>
+        s.type === 'insert' && pointsEqual(s.selection.anchor, point),
+    )
+  }
+
+  function findAdjacentDelete(
+    point: EditorSelectionPoint,
+    direction: 'backward' | 'forward',
+  ): {index: number; suggestion: Suggestion} | undefined {
+    for (let i = 0; i < suggestions.length; i++) {
+      const s = suggestions[i]!
+      if (s.type !== 'delete') continue
+      if (!pathsEqual(s.selection.anchor.path, point.path)) continue
+      if (!pathsEqual(s.selection.focus.path, point.path)) continue
+
+      const startOffset = Math.min(
+        s.selection.anchor.offset,
+        s.selection.focus.offset,
+      )
+      const endOffset = Math.max(
+        s.selection.anchor.offset,
+        s.selection.focus.offset,
+      )
+
+      if (direction === 'backward' && point.offset === startOffset) {
+        return {index: i, suggestion: s}
+      }
+      if (direction === 'forward' && point.offset === endOffset) {
+        return {index: i, suggestion: s}
+      }
+    }
+    return undefined
+  }
+
+  const behavior = createSuggestModeBehavior({
+    isActive: () => suggestModeActive,
+    onIntercept: ({event, snapshot}) => {
+      const selection = snapshot.context.selection
+      if (!selection) return
+
+      switch (event.type) {
+        case 'insert.text': {
+          if (!('text' in event) || !event.text) return
+          const cursorPoint = selection.anchor
+
+          // Continuation: extend existing insert suggestion at this position
+          const existing = findInsertAtPoint(cursorPoint)
+          if (existing) {
+            const plainText = getPlainTextFromSuggestion(existing)
+            const idx = suggestions.indexOf(existing)
+            suggestions[idx] = {
+              ...existing,
+              content: textToSuggestionContent(plainText + event.text),
+            }
+          } else {
+            suggestions.push({
+              type: 'insert',
+              id: `suggest-${nextId++}`,
+              selection: {anchor: cursorPoint, focus: cursorPoint},
+              content: textToSuggestionContent(event.text),
+            })
+          }
+          break
+        }
+
+        case 'delete.backward': {
+          const cursorPoint = selection.anchor
+
+          if (selectionIsCollapsed(selection)) {
+            // 1. Shrink existing insert suggestion
+            const existingInsert = findInsertAtPoint(cursorPoint)
+            if (existingInsert) {
+              const plainText = getPlainTextFromSuggestion(existingInsert)
+              if (plainText.length <= 1) {
+                // Remove suggestion entirely
+                const idx = suggestions.indexOf(existingInsert)
+                suggestions.splice(idx, 1)
+              } else {
+                const idx = suggestions.indexOf(existingInsert)
+                suggestions[idx] = {
+                  ...existingInsert,
+                  content: textToSuggestionContent(plainText.slice(0, -1)),
+                }
+              }
+              break
+            }
+
+            // 2. Extend adjacent delete suggestion backward
+            const adjacent = findAdjacentDelete(cursorPoint, 'backward')
+            if (adjacent && cursorPoint.offset > 0) {
+              const {index, suggestion} = adjacent
+              const startOffset = Math.min(
+                suggestion.selection.anchor.offset,
+                suggestion.selection.focus.offset,
+              )
+              const endOffset = Math.max(
+                suggestion.selection.anchor.offset,
+                suggestion.selection.focus.offset,
+              )
+              suggestions[index] = {
+                ...suggestion,
+                selection: {
+                  anchor: {...cursorPoint, offset: startOffset - 1},
+                  focus: {...cursorPoint, offset: endOffset},
+                },
+              }
+              break
+            }
+
+            // 3. New delete suggestion for the character before cursor
+            if (cursorPoint.offset > 0) {
+              suggestions.push({
+                type: 'delete',
+                id: `suggest-${nextId++}`,
+                selection: {
+                  anchor: {...cursorPoint, offset: cursorPoint.offset - 1},
+                  focus: cursorPoint,
+                },
+              })
+            }
+          } else {
+            // Expanded selection delete
+            suggestions.push({
+              type: 'delete',
+              id: `suggest-${nextId++}`,
+              selection,
+            })
+          }
+          break
+        }
+
+        case 'delete.forward': {
+          const cursorPoint = selection.anchor
+
+          if (selectionIsCollapsed(selection)) {
+            // Extend adjacent delete suggestion forward
+            const adjacent = findAdjacentDelete(cursorPoint, 'forward')
+            if (adjacent) {
+              const {index, suggestion} = adjacent
+              const startOffset = Math.min(
+                suggestion.selection.anchor.offset,
+                suggestion.selection.focus.offset,
+              )
+              const endOffset = Math.max(
+                suggestion.selection.anchor.offset,
+                suggestion.selection.focus.offset,
+              )
+              suggestions[index] = {
+                ...suggestion,
+                selection: {
+                  anchor: {...cursorPoint, offset: startOffset},
+                  focus: {...cursorPoint, offset: endOffset + 1},
+                },
+              }
+              break
+            }
+
+            // New delete suggestion for the character after cursor
+            suggestions.push({
+              type: 'delete',
+              id: `suggest-${nextId++}`,
+              selection: {
+                anchor: cursorPoint,
+                focus: {...cursorPoint, offset: cursorPoint.offset + 1},
+              },
+            })
+          } else {
+            suggestions.push({
+              type: 'delete',
+              id: `suggest-${nextId++}`,
+              selection,
+            })
+          }
+          break
+        }
+
+        case 'delete':
+        case 'delete.text': {
+          const isExpanded = !selectionIsCollapsed(selection)
+          if (isExpanded) {
+            suggestions.push({
+              type: 'delete',
+              id: `suggest-${nextId++}`,
+              selection,
+            })
+          }
+          break
+        }
+
+        case 'insert.break':
+        case 'insert.soft break':
+        case 'split': {
+          const cursorPoint = selection.anchor
+          const existing = findInsertAtPoint(cursorPoint)
+          if (existing) {
+            const plainText = getPlainTextFromSuggestion(existing)
+            const idx = suggestions.indexOf(existing)
+            suggestions[idx] = {
+              ...existing,
+              content: textToSuggestionContent(plainText + '\n'),
+            }
+          } else {
+            suggestions.push({
+              type: 'insert',
+              id: `suggest-${nextId++}`,
+              selection: {anchor: selection.anchor, focus: selection.anchor},
+              content: textToSuggestionContent('\n'),
+            })
+          }
+          break
+        }
+
+        default:
+          break
+      }
+    },
+  })
+
+  const {editor, locator} = await createTestEditor({
+    initialValue: helloWorldValue(),
+  })
+
+  const unregister = editor.registerBehavior({behavior})
+
+  return {
+    editor,
+    locator,
+    suggestions,
+    enableSuggestMode: () => {
+      suggestModeActive = true
+    },
+    disableSuggestMode: () => {
+      suggestModeActive = false
+    },
+    unregister,
+  }
+}
+
+const spanPath = [{_key: 'b1'}, 'children', {_key: 's1'}]
+
+describe('Suggest mode: continuation (Phase 2B)', () => {
+  test('consecutive typing at same position creates ONE suggestion, not many', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type "hello" — 5 keystrokes
+    editor.send({type: 'insert.text', text: 'h'})
+    editor.send({type: 'insert.text', text: 'e'})
+    editor.send({type: 'insert.text', text: 'l'})
+    editor.send({type: 'insert.text', text: 'l'})
+    editor.send({type: 'insert.text', text: 'o'})
+
+    // Should be ONE suggestion with content "hello"
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.type).toBe('insert')
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'hello',
+    )
+
+    // Base doc unchanged
+    await vi.waitFor(() => {
+      expect(locator).toHaveTextContent('Hello world')
+    })
+  })
+
+  test('typing at different positions creates separate suggestions', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    enableSuggestMode()
+
+    // Type at offset 5
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+    editor.send({type: 'insert.text', text: 'A'})
+    editor.send({type: 'insert.text', text: 'B'})
+
+    // Move cursor to offset 0 and type
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 0},
+        focus: {path: spanPath, offset: 0},
+      },
+    })
+    editor.send({type: 'insert.text', text: 'X'})
+    editor.send({type: 'insert.text', text: 'Y'})
+
+    // Two separate suggestions
+    expect(suggestions).toHaveLength(2)
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'AB',
+    )
+    expect(getPlainTextFromSuggestion(suggestions[1] as InsertSuggestion)).toBe(
+      'XY',
+    )
+  })
+
+  test('backspace shrinks an existing insert suggestion', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type "abc"
+    editor.send({type: 'insert.text', text: 'a'})
+    editor.send({type: 'insert.text', text: 'b'})
+    editor.send({type: 'insert.text', text: 'c'})
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'abc',
+    )
+
+    // Backspace — should shrink to "ab"
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'ab',
+    )
+
+    // Backspace again — "a"
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'a',
+    )
+
+    // Base doc unchanged
+    await vi.waitFor(() => {
+      expect(locator).toHaveTextContent('Hello world')
+    })
+  })
+
+  test('backspace removes suggestion entirely when content becomes empty', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type one character
+    editor.send({type: 'insert.text', text: 'X'})
+    expect(suggestions).toHaveLength(1)
+
+    // Backspace — suggestion should be removed entirely
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(suggestions).toHaveLength(0)
+  })
+
+  test('backspace with no insert suggestion creates delete suggestion', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Backspace at offset 5 with no existing insert suggestion
+    // Should create a delete suggestion covering offset 4-5 (the "o" in "Hello")
+    editor.send({type: 'delete.backward', unit: 'character'})
+
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.type).toBe('delete')
+    expect(suggestions[0]!.selection.anchor.offset).toBe(4)
+    expect(suggestions[0]!.selection.focus.offset).toBe(5)
+  })
+
+  test('consecutive backspaces extend delete suggestion backward', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // First backspace: creates delete suggestion at 4-5
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.selection.anchor.offset).toBe(4)
+    expect(suggestions[0]!.selection.focus.offset).toBe(5)
+
+    // Second backspace at offset 4 (adjacent to delete start):
+    // extends to 3-5
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 4},
+        focus: {path: spanPath, offset: 4},
+      },
+    })
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.selection.anchor.offset).toBe(3)
+    expect(suggestions[0]!.selection.focus.offset).toBe(5)
+
+    // Third backspace at offset 3: extends to 2-5
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 3},
+        focus: {path: spanPath, offset: 3},
+      },
+    })
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.selection.anchor.offset).toBe(2)
+    expect(suggestions[0]!.selection.focus.offset).toBe(5)
+
+    // Base doc unchanged
+    await vi.waitFor(() => {
+      expect(locator).toHaveTextContent('Hello world')
+    })
+  })
+
+  test('forward delete extends delete suggestion forward', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 6},
+        focus: {path: spanPath, offset: 6},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Forward delete at offset 6: creates delete suggestion at 6-7
+    editor.send({type: 'delete.forward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.selection.anchor.offset).toBe(6)
+    expect(suggestions[0]!.selection.focus.offset).toBe(7)
+
+    // Forward delete at offset 7 (adjacent to delete end): extends to 6-8
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 7},
+        focus: {path: spanPath, offset: 7},
+      },
+    })
+    editor.send({type: 'delete.forward', unit: 'character'})
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]!.selection.anchor.offset).toBe(6)
+    expect(suggestions[0]!.selection.focus.offset).toBe(8)
+
+    // Base doc unchanged
+    await vi.waitFor(() => {
+      expect(locator).toHaveTextContent('Hello world')
+    })
+  })
+
+  test('insert.break extends existing insert suggestion with newline', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type some text, then press Enter
+    editor.send({type: 'insert.text', text: 'a'})
+    editor.send({type: 'insert.text', text: 'b'})
+    editor.send({type: 'insert.break'})
+    editor.send({type: 'insert.text', text: 'c'})
+
+    // Should be ONE suggestion with content "ab\nc"
+    expect(suggestions).toHaveLength(1)
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'ab\nc',
+    )
+  })
+
+  test('type, backspace, type again continues the same suggestion', async () => {
+    const {editor, locator, suggestions, enableSuggestMode} =
+      await createContinuationEditor()
+
+    await locator.click()
+    editor.send({
+      type: 'select',
+      at: {
+        anchor: {path: spanPath, offset: 5},
+        focus: {path: spanPath, offset: 5},
+      },
+    })
+
+    enableSuggestMode()
+
+    // Type "abc"
+    editor.send({type: 'insert.text', text: 'a'})
+    editor.send({type: 'insert.text', text: 'b'})
+    editor.send({type: 'insert.text', text: 'c'})
+
+    // Backspace twice → "a"
+    editor.send({type: 'delete.backward', unit: 'character'})
+    editor.send({type: 'delete.backward', unit: 'character'})
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'a',
+    )
+
+    // Type "xy" → "axy"
+    editor.send({type: 'insert.text', text: 'x'})
+    editor.send({type: 'insert.text', text: 'y'})
+
+    // Still ONE suggestion
+    expect(suggestions).toHaveLength(1)
+    expect(getPlainTextFromSuggestion(suggestions[0] as InsertSuggestion)).toBe(
+      'axy',
+    )
   })
 })

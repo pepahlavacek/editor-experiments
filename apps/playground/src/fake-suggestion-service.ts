@@ -3,6 +3,7 @@ import {textToSuggestionContent} from '@portabletext/editor'
 
 export type SuggestionServiceEvent =
   | {type: 'added'; suggestion: Suggestion}
+  | {type: 'updated'; suggestion: Suggestion}
   | {
       type: 'removed'
       suggestionId: string
@@ -154,6 +155,19 @@ export class FakeSuggestionService {
     }
     this.suggestions.set(suggestion.id, suggestion)
     this.notify({type: 'added', suggestion})
+  }
+
+  /**
+   * Update an existing suggestion in-place.
+   * Used by suggest mode continuation to extend/shrink suggestions.
+   * Notifies listeners with an 'updated' event.
+   */
+  updateSuggestion(suggestion: Suggestion): void {
+    if (!this.suggestions.has(suggestion.id)) {
+      throw new Error(`Cannot update suggestion "${suggestion.id}" — not found`)
+    }
+    this.suggestions.set(suggestion.id, suggestion)
+    this.notify({type: 'updated', suggestion})
   }
 
   /**
