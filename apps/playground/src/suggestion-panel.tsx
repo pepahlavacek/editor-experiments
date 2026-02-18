@@ -87,7 +87,9 @@ export function useSharedSuggestionService(): {
         const detail =
           event.type === 'added'
             ? `${event.suggestion.type} "${event.suggestion.id}"`
-            : `${event.reason} "${event.suggestionId}"`
+            : event.type === 'removed'
+              ? `${event.reason} "${event.suggestionId}"`
+              : `"${event.suggestion.id}"`
         console.log(`[SuggestionService] ${emoji} ${event.type}: ${detail}`)
       }
     })

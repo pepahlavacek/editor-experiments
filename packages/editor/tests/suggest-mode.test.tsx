@@ -13,17 +13,25 @@
  * - Backspace shrinks the current insert suggestion
  * - Delete extends adjacent delete suggestions
  */
-import {getTersePt} from '@portabletext/test'
+import {defineSchema} from '@portabletext/schema'
+import {createTestKeyGenerator, getTersePt} from '@portabletext/test'
+import React from 'react'
 import {describe, expect, test, vi} from 'vitest'
+import {render} from 'vitest-browser-react'
 import {page, userEvent} from 'vitest/browser'
 import {
   createSuggestModeBehavior,
+  EditorProvider,
+  PortableTextEditable,
   suggestionsToDecorations,
+  useEditor,
+  type Editor,
   type EditorSelection,
   type InsertSuggestion,
   type Suggestion,
   type SuggestModeInterceptEvent,
 } from '../src'
+import {EditorRefPlugin} from '../src/plugins/plugin.editor-ref'
 import {createTestEditor, createTestEditors} from '../src/test/vitest'
 // ===========================================================================
 // Phase 2B: Suggestion continuation
@@ -1295,5 +1303,146 @@ describe('Suggest mode: real keyboard input (userEvent.type)', () => {
     })
 
     unregisterA()
+  })
+})
+
+// ===========================================================================
+// Playground-architecture reproduction test
+//
+// Josef's repro: type "hello world", enable suggest mode, type " aloha"
+// → text goes into base doc AND/OR appears backwards.
+//
+// This test mirrors the playground's exact architecture:
+// - SuggestModePlugin is a React component inside EditorProvider
+// - It uses useEditor() to get the editor from context
+// - It registers behavior in useEffect, unregisters on cleanup
+// - Suggest mode is toggled via props (which update a ref)
+// ===========================================================================
+
+/**
+ * Minimal SuggestModePlugin for testing — mirrors the playground's architecture.
+ * Lives inside EditorProvider, uses useEditor(), registers behavior in useEffect.
+ */
+function TestSuggestModePlugin(props: {
+  active: boolean
+  onIntercept: (event: SuggestModeInterceptEvent) => void
+}) {
+  const editor = useEditor()
+  const activeRef = React.useRef(props.active)
+  activeRef.current = props.active
+
+  const onInterceptRef = React.useRef(props.onIntercept)
+  onInterceptRef.current = props.onIntercept
+
+  React.useEffect(() => {
+    const behavior = createSuggestModeBehavior({
+      isActive: () => activeRef.current,
+      onIntercept: (evt) => onInterceptRef.current(evt),
+    })
+
+    const unregister = editor.registerBehavior({behavior})
+    return unregister
+  }, [editor])
+
+  return null
+}
+
+describe('Suggest mode: playground architecture reproduction', () => {
+  test('type normally, enable suggest mode, type more — base doc unchanged', async () => {
+    const editorRef = React.createRef<Editor>()
+    const keyGen = createTestKeyGenerator()
+
+    const suggestions: Suggestion[] = []
+    let nextId = 1
+
+    function handleIntercept({event, snapshot}: SuggestModeInterceptEvent) {
+      const selection = snapshot.context.selection
+      if (!selection) return
+
+      if (event.type === 'insert.text' && 'text' in event && event.text) {
+        const cursorPoint = selection.anchor
+        // Continuation: find existing insert at same position
+        const existing = suggestions.find(
+          (s): s is InsertSuggestion =>
+            s.type === 'insert' && pointsEqual(s.selection.anchor, cursorPoint),
+        )
+        if (existing) {
+          const plainText = getPlainTextFromSuggestion(existing)
+          const idx = suggestions.indexOf(existing)
+          suggestions[idx] = {
+            ...existing,
+            content: textToSuggestionContent(plainText + event.text),
+          }
+        } else {
+          suggestions.push({
+            type: 'insert',
+            id: `suggest-${nextId++}`,
+            selection: {anchor: cursorPoint, focus: cursorPoint},
+            content: textToSuggestionContent(event.text),
+          })
+        }
+      }
+    }
+
+    // Wrapper that can toggle suggest mode via rerender
+    function TestEditor(props: {suggestMode: boolean}) {
+      return (
+        <EditorProvider
+          initialConfig={{
+            keyGenerator: keyGen,
+            schemaDefinition: defineSchema({}),
+          }}
+        >
+          <EditorRefPlugin ref={editorRef} />
+          <TestSuggestModePlugin
+            active={props.suggestMode}
+            onIntercept={handleIntercept}
+          />
+          <PortableTextEditable data-testid="editor" />
+        </EditorProvider>
+      )
+    }
+
+    // Step 1: Render with suggest mode OFF
+    const renderResult = await render(<TestEditor suggestMode={false} />)
+    const locator = page.getByTestId('editor')
+    await vi.waitFor(() => expect.element(locator).toBeInTheDocument())
+
+    const editor = editorRef.current!
+    expect(editor).toBeTruthy()
+
+    // Step 2: Type "hello world" normally (suggest mode OFF)
+    await userEvent.click(locator)
+    editor.send({type: 'focus'})
+    await userEvent.type(locator, 'hello world')
+
+    // Verify: doc contains "hello world"
+    await vi.waitFor(() => {
+      const terse = getTersePt(editor.getSnapshot().context)
+      expect(terse[0]).toContain('hello world')
+    })
+
+    // No suggestions should exist yet
+    expect(suggestions).toHaveLength(0)
+
+    // Step 3: Enable suggest mode via rerender
+    await renderResult.rerender(<TestEditor suggestMode={true} />)
+
+    // Step 4: Type " aloha" in suggest mode
+    await userEvent.type(locator, ' aloha')
+
+    // Step 5: Assert — base doc should still be "hello world"
+    await vi.waitFor(() => {
+      const terse = getTersePt(editor.getSnapshot().context)
+      expect(terse).toEqual(['hello world'])
+    })
+
+    // Suggestion should contain " aloha"
+    expect(suggestions.length).toBeGreaterThanOrEqual(1)
+    const totalText = suggestions
+      .filter((s): s is InsertSuggestion => s.type === 'insert')
+      .map((s) => getPlainTextFromSuggestion(s))
+      .join('')
+    expect(totalText).toBe(' aloha')
   })
 })

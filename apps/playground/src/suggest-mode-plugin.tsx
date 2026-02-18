@@ -173,6 +173,13 @@ export function SuggestModePlugin(props: {
   const activeRef = useRef(props.active)
   activeRef.current = props.active
 
+  // Trace prop changes
+  useEffect(() => {
+    console.log(
+      `[SuggestModePlugin:render] active prop changed to: ${props.active}`,
+    )
+  }, [props.active])
+
   const serviceRef = useRef(props.service)
   serviceRef.current = props.service
 
@@ -400,13 +407,35 @@ export function SuggestModePlugin(props: {
   )
 
   useEffect(() => {
+    console.log(
+      `[SuggestModePlugin:useEffect] Registering behavior. editor=${!!editor} editorId=${(editor as any)?._internal?.slateEditor?.instance?.id ?? 'unknown'}`,
+    )
     const behavior = createSuggestModeBehavior({
-      isActive: () => activeRef.current && !serviceRef.current.isBypassing,
-      onIntercept,
+      isActive: () => {
+        const active = activeRef.current
+        const bypassing = serviceRef.current.isBypassing
+        // Only log when active to avoid spam
+        if (active) {
+          console.log(
+            `[SuggestModePlugin:isActive] active=${active} bypassing=${bypassing} → ${active && !bypassing}`,
+          )
+        }
+        return active && !bypassing
+      },
+      onIntercept: (interceptEvent) => {
+        console.log(
+          `[SuggestModePlugin:onIntercept] event=${interceptEvent.event.type}`,
+        )
+        onIntercept(interceptEvent)
+      },
     })
 
     const unregister = editor.registerBehavior({behavior})
-    return unregister
+    console.log(`[SuggestModePlugin:useEffect] Behavior registered.`)
+    return () => {
+      console.log(`[SuggestModePlugin:useEffect] Unregistering behavior.`)
+      unregister()
+    }
   }, [editor, onIntercept])
 
   return null

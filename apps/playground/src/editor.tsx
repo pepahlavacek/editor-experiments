@@ -229,11 +229,15 @@ function EditorWithSuggestions(props: {
   const [suggestMode, setSuggestMode] = useState(false)
   const toggleSuggestMode = useCallback(() => {
     setSuggestMode((prev) => {
-      if (!prev && !suggestionService.enabled) {
+      const next = !prev
+      console.log(
+        `[EditorWithSuggestions:toggleSuggestMode] ${prev} → ${next} (enabled=${suggestionService.enabled})`,
+      )
+      if (next && !suggestionService.enabled) {
         // Turning on suggest mode — also enable suggestions if not already
         suggestionService.toggle()
       }
-      return !prev
+      return next
     })
   }, [suggestionService])
 
