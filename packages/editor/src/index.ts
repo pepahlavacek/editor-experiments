@@ -104,6 +104,8 @@ export type {
   SuggestionConfig,
   SuggestionEvent,
   SuggestionOnMovedDetails,
+} from './types/suggestion'
+export {
   getPlainTextFromSuggestion,
   textToSuggestionContent,
 } from './types/suggestion'

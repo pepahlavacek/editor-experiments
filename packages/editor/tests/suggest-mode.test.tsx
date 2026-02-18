@@ -9,7 +9,6 @@
  * - Non-mutation events (selection, focus) pass through normally
  */
 import {describe, expect, test, vi} from 'vitest'
-import {page, userEvent} from 'vitest/browser'
 import {createSuggestModeBehavior, type SuggestModeInterceptEvent} from '../src'
 import {createTestEditor} from '../src/test/vitest'
 import type {InsertSuggestion, Suggestion} from '../src/types/suggestion'
