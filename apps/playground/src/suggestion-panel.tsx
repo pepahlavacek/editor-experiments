@@ -142,10 +142,14 @@ export function useSuggestionDecorations(props: {
   const onAction = useCallback(
     (event: {action: 'accept' | 'reject'; suggestion: Suggestion}) => {
       if (event.action === 'accept') {
-        // Apply the suggestion's change to the document BEFORE removing it.
-        // This uses the local editor instance, so the change applies to
-        // whichever editor the user clicked accept in.
-        applySuggestionToEditor(editor, event.suggestion)
+        // Bypass suggest mode so the editor operations don't get intercepted
+        // and turned into more suggestions.
+        props.service.isBypassing = true
+        try {
+          applySuggestionToEditor(editor, event.suggestion)
+        } finally {
+          props.service.isBypassing = false
+        }
         props.service.acceptSuggestion(event.suggestion.id)
       } else {
         props.service.rejectSuggestion(event.suggestion.id)

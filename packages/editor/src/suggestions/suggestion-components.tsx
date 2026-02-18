@@ -112,7 +112,6 @@ export function InsertSuggestionComponent(
       data-suggestion-id={props.suggestionId}
       data-suggestion-type="insert"
     >
-      {props.children}
       <span
         contentEditable={false}
         data-testid={`suggestion-${props.suggestionId}-inserted`}
@@ -132,6 +131,7 @@ export function InsertSuggestionComponent(
           onReject={props.onReject}
         />
       )}
+      {props.children}
     </span>
   )
 }

@@ -401,7 +401,7 @@ export function SuggestModePlugin(props: {
 
   useEffect(() => {
     const behavior = createSuggestModeBehavior({
-      isActive: () => activeRef.current,
+      isActive: () => activeRef.current && !serviceRef.current.isBypassing,
       onIntercept,
     })
 

@@ -56,6 +56,13 @@ export class FakeSuggestionService {
   private config: Required<FakeSuggestionServiceConfig>
   private nextId = 1
 
+  /**
+   * When true, suggest mode behavior should let events pass through.
+   * Used during accept/reject to prevent the behavior from intercepting
+   * the editor operations that apply the suggestion's changes.
+   */
+  isBypassing = false
+
   constructor(config: FakeSuggestionServiceConfig = {}) {
     this.config = {
       minDelay: config.minDelay ?? 200,
