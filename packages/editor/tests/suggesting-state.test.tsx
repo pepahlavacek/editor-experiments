@@ -392,8 +392,15 @@ describe('Suggesting state: backwards compatibility', () => {
 
     // Bypass mode — mutations pass through to document
     bypassing = true
+
+    // State machine still says suggesting — only the behavior guard is bypassed
+    expect(editor.getSnapshot().context.suggesting).toBe(true)
+
     editor.send({type: 'insert.text', text: 'Y'})
     expect(interceptedEvents).toHaveLength(1) // Still 1 — not intercepted
+
+    // State machine unchanged during bypass
+    expect(editor.getSnapshot().context.suggesting).toBe(true)
 
     await vi.waitFor(() => {
       expect(locator).toHaveTextContent('HelloY world')
