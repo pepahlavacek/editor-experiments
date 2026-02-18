@@ -486,10 +486,12 @@ async function createContinuationEditor() {
         s.selection.focus.offset,
       )
 
-      if (direction === 'backward' && point.offset === startOffset) {
+      // Backward: cursor stays at the END of the delete range (doc frozen)
+      if (direction === 'backward' && point.offset === endOffset) {
         return {index: i, suggestion: s}
       }
-      if (direction === 'forward' && point.offset === endOffset) {
+      // Forward: cursor stays at the START of the delete range (doc frozen)
+      if (direction === 'forward' && point.offset === startOffset) {
         return {index: i, suggestion: s}
       }
     }
@@ -889,28 +891,15 @@ describe('Suggest mode: continuation (Phase 2B)', () => {
     expect(suggestions[0]!.selection.anchor.offset).toBe(4)
     expect(suggestions[0]!.selection.focus.offset).toBe(5)
 
-    // Second backspace at offset 4 (adjacent to delete start):
-    // extends to 3-5
-    editor.send({
-      type: 'select',
-      at: {
-        anchor: {path: spanPath, offset: 4},
-        focus: {path: spanPath, offset: 4},
-      },
-    })
+    // Second backspace — cursor stays at offset 5 (doc is frozen).
+    // findAdjacentDeleteSuggestion checks point.offset (5) === endOffset (5) → match.
+    // Extends to 3-5.
     editor.send({type: 'delete.backward', unit: 'character'})
     expect(suggestions).toHaveLength(1)
     expect(suggestions[0]!.selection.anchor.offset).toBe(3)
     expect(suggestions[0]!.selection.focus.offset).toBe(5)
 
-    // Third backspace at offset 3: extends to 2-5
-    editor.send({
-      type: 'select',
-      at: {
-        anchor: {path: spanPath, offset: 3},
-        focus: {path: spanPath, offset: 3},
-      },
-    })
+    // Third backspace — cursor still at offset 5. Extends to 2-5.
     editor.send({type: 'delete.backward', unit: 'character'})
     expect(suggestions).toHaveLength(1)
     expect(suggestions[0]!.selection.anchor.offset).toBe(2)
@@ -943,14 +932,9 @@ describe('Suggest mode: continuation (Phase 2B)', () => {
     expect(suggestions[0]!.selection.anchor.offset).toBe(6)
     expect(suggestions[0]!.selection.focus.offset).toBe(7)
 
-    // Forward delete at offset 7 (adjacent to delete end): extends to 6-8
-    editor.send({
-      type: 'select',
-      at: {
-        anchor: {path: spanPath, offset: 7},
-        focus: {path: spanPath, offset: 7},
-      },
-    })
+    // Forward delete — cursor stays at offset 6 (doc is frozen).
+    // findAdjacentDeleteSuggestion checks point.offset (6) === startOffset (6) → match.
+    // Extends to 6-8.
     editor.send({type: 'delete.forward', unit: 'character'})
     expect(suggestions).toHaveLength(1)
     expect(suggestions[0]!.selection.anchor.offset).toBe(6)

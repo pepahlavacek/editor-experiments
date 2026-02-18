@@ -74,8 +74,17 @@ function findInsertSuggestionAtPoint(
 
 /**
  * Find a delete suggestion whose range is adjacent to the given point.
- * "Adjacent" means the point is at the anchor or focus edge of the
- * delete selection, so a further delete in the same direction extends it.
+ * "Adjacent" means the point is at the correct edge of the delete range
+ * for the given direction, so a further delete extends it.
+ *
+ * In suggest mode the document is frozen, so the cursor stays at its
+ * original position after each delete:
+ * - **Backward delete:** cursor stays at the END (focus) of the delete range.
+ *   First backspace at offset 5 creates delete [4,5]. Cursor stays at 5.
+ *   Second backspace: point.offset (5) === endOffset (5) → match → extend to [3,5].
+ * - **Forward delete:** cursor stays at the START (anchor) of the delete range.
+ *   First forward-delete at offset 5 creates delete [5,6]. Cursor stays at 5.
+ *   Second forward-delete: point.offset (5) === startOffset (5) → match → extend to [5,7].
  *
  * Returns the suggestion and which edge matched ('anchor' | 'focus').
  */
@@ -86,12 +95,6 @@ function findAdjacentDeleteSuggestion(
 ): {suggestion: Suggestion; edge: 'anchor' | 'focus'} | undefined {
   for (const s of suggestions) {
     if (s.type !== 'delete') continue
-    // For backward delete: the point should be at the anchor (start) of the
-    // delete range — we're extending backward from the start.
-    // For forward delete: the point should be at the focus (end).
-    //
-    // We normalize: anchor is the earlier point, focus is the later point.
-    // Since we only handle same-path for now, compare offsets.
     if (!pathsEqual(s.selection.anchor.path, point.path)) continue
     if (!pathsEqual(s.selection.focus.path, point.path)) continue
 
@@ -100,13 +103,15 @@ function findAdjacentDeleteSuggestion(
     const startOffset = Math.min(anchorOffset, focusOffset)
     const endOffset = Math.max(anchorOffset, focusOffset)
 
-    if (direction === 'backward' && point.offset === startOffset) {
+    // Backward: cursor is at the end of the range (doc frozen → cursor didn't move)
+    if (direction === 'backward' && point.offset === endOffset) {
       return {
         suggestion: s,
         edge: anchorOffset <= focusOffset ? 'anchor' : 'focus',
       }
     }
-    if (direction === 'forward' && point.offset === endOffset) {
+    // Forward: cursor is at the start of the range (doc frozen → cursor didn't move)
+    if (direction === 'forward' && point.offset === startOffset) {
       return {
         suggestion: s,
         edge: anchorOffset >= focusOffset ? 'anchor' : 'focus',
@@ -427,6 +432,17 @@ export function SuggestModePlugin(props: {
           `[SuggestModePlugin:onIntercept] event=${interceptEvent.event.type}`,
         )
         onIntercept(interceptEvent)
+
+        // After the suggestion mutation, React will re-render with the new
+        // decoration (injected suggestion span). This DOM change can displace
+        // the browser cursor. Schedule a focus restoration after React's
+        // commit phase to put the cursor back where it was.
+        const selection = interceptEvent.snapshot.context.selection
+        if (selection) {
+          requestAnimationFrame(() => {
+            editor.send({type: 'select', at: selection})
+          })
+        }
       },
     })
 
