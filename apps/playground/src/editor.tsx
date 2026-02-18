@@ -228,18 +228,16 @@ function EditorWithSuggestions(props: {
   // whether typing creates suggestions or edits the document.
   const [suggestMode, setSuggestMode] = useState(false)
   const toggleSuggestMode = useCallback(() => {
-    setSuggestMode((prev) => {
-      const next = !prev
-      console.log(
-        `[EditorWithSuggestions:toggleSuggestMode] ${prev} → ${next} (enabled=${suggestionService.enabled})`,
-      )
-      if (next && !suggestionService.enabled) {
-        // Turning on suggest mode — also enable suggestions if not already
-        suggestionService.toggle()
-      }
-      return next
-    })
-  }, [suggestionService])
+    setSuggestMode((prev) => !prev)
+  }, [])
+
+  // Sync: when suggest mode turns on, ensure the shared suggestion service is enabled.
+  // This runs as an effect (after render) to avoid setState-on-parent-during-child-setState.
+  useEffect(() => {
+    if (suggestMode && !suggestionService.enabled) {
+      suggestionService.toggle()
+    }
+  }, [suggestMode, suggestionService])
 
   // Each editor creates its own decorations from the shared suggestions.
   // The onAction callback uses this editor's useEditor() instance,
