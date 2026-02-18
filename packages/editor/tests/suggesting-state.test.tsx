@@ -135,6 +135,32 @@ describe('Suggesting state: state transitions', () => {
     })
   })
 
+  test('suggesting→readOnly→editable round-trip does not remember suggesting', async () => {
+    const {editor} = await createStateMachineSuggestEditor()
+
+    // Start in suggesting mode
+    editor.send({type: 'update suggestMode', suggesting: true})
+    await vi.waitFor(() => {
+      expect(editor.getSnapshot().context.suggesting).toBe(true)
+    })
+
+    // readOnly overrides suggesting
+    editor.send({type: 'update readOnly', readOnly: true})
+    await vi.waitFor(() => {
+      const snapshot = editor.getSnapshot()
+      expect(snapshot.context.readOnly).toBe(true)
+      expect(snapshot.context.suggesting).toBe(false)
+    })
+
+    // Come back from readOnly — should land in editable, NOT suggesting
+    editor.send({type: 'update readOnly', readOnly: false})
+    await vi.waitFor(() => {
+      const snapshot = editor.getSnapshot()
+      expect(snapshot.context.readOnly).toBe(false)
+      expect(snapshot.context.suggesting).toBe(false)
+    })
+  })
+
   test('update suggestMode is ignored in read only mode', async () => {
     const {editor} = await createStateMachineSuggestEditor()
 
@@ -302,10 +328,25 @@ describe('Suggesting state: backwards compatibility', () => {
     // Enable via legacy flag
     suggestModeActive = true
 
+    // Suppress the expected deprecation warning
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
     editor.send({type: 'insert.text', text: 'X'})
 
     expect(interceptedEvents).toHaveLength(1)
     expect(interceptedEvents[0]!.event.type).toBe('insert.text')
+
+    // Snapshot still reports suggesting=false (legacy flag doesn't update state machine)
+    expect(editor.getSnapshot().context.suggesting).toBe(false)
+
+    // Deprecation warning was emitted
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'isActive() returned true but the state machine is not in suggesting mode',
+      ),
+    )
+
+    warnSpy.mockRestore()
 
     // Base document unchanged
     await vi.waitFor(() => {

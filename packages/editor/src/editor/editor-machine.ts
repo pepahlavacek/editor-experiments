@@ -177,6 +177,126 @@ export function rerouteExternalBehaviorEvent({
 /**
  * @internal
  */
+/**
+ * Creates the shared substates (idle, focusing, dragging internally) used by
+ * both 'editable' and 'suggesting' edit mode states.
+ *
+ * These states handle focus management and internal drag-and-drop. The behavior
+ * is identical in both modes — only the parent state differs.
+ *
+ * @param modeName - The parent edit mode name, used for debug strings and
+ *   absolute state ID targets (e.g., 'editable' or 'suggesting').
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createEditableSubstates(modeName: string): any {
+  return {
+    'idle': {
+      entry: [
+        () => {
+          debug.state(`entry: edit mode->${modeName}->idle`)
+        },
+      ],
+      exit: [
+        () => {
+          debug.state(`exit: edit mode->${modeName}->idle`)
+        },
+      ],
+      on: {
+        dragstart: {
+          actions: [
+            assign({
+              internalDrag: ({event}: {event: any}) => ({
+                origin: event.origin,
+              }),
+            }),
+          ],
+          target: 'dragging internally',
+        },
+      },
+    },
+    'focusing': {
+      initial: 'checking if busy',
+      states: {
+        'checking if busy': {
+          entry: [
+            () => {
+              debug.state(
+                `entry: edit mode->${modeName}->focusing->checking if busy`,
+              )
+            },
+          ],
+          exit: [
+            () => {
+              debug.state(
+                `exit: edit mode->${modeName}->focusing->checking if busy`,
+              )
+            },
+          ],
+          always: [
+            {
+              guard: 'slate is busy',
+              target: 'busy',
+            },
+            {
+              target: `#editor.edit mode.${modeName}.idle`,
+              actions: ['handle focus'],
+            },
+          ],
+        },
+        'busy': {
+          entry: [
+            () => {
+              debug.state(`entry: edit mode->${modeName}->focusing->busy`)
+            },
+          ],
+          exit: [
+            () => {
+              debug.state(`exit: edit mode->${modeName}->focusing->busy`)
+            },
+          ],
+          after: {
+            10: {
+              target: 'checking if busy',
+            },
+          },
+        },
+      },
+    },
+    'dragging internally': {
+      entry: [
+        () => {
+          debug.state(`entry: edit mode->${modeName}->dragging internally`)
+        },
+      ],
+      exit: [
+        () => {
+          debug.state(`exit: edit mode->${modeName}->dragging internally`)
+        },
+        ({context}: {context: any}) => {
+          if (context.dragGhost) {
+            try {
+              context.dragGhost.parentNode?.removeChild(context.dragGhost)
+            } catch (error) {
+              console.error(
+                new Error(
+                  `Removing the drag ghost failed due to: ${error instanceof Error ? error.message : error}`,
+                ),
+              )
+            }
+          }
+        },
+        assign({dragGhost: undefined}),
+        assign({internalDrag: undefined}),
+      ],
+      tags: ['dragging internally'],
+      on: {
+        dragend: {target: 'idle'},
+        drop: {target: 'idle'},
+      },
+    },
+  }
+}
+
 export const editorMachine = setup({
   types: {
     context: {} as {
@@ -529,114 +649,7 @@ export const editorMachine = setup({
             },
           },
           initial: 'idle',
-          states: {
-            'idle': {
-              entry: [
-                () => {
-                  debug.state('entry: edit mode->editable->idle')
-                },
-              ],
-              exit: [
-                () => {
-                  debug.state('exit: edit mode->editable-idle')
-                },
-              ],
-              on: {
-                dragstart: {
-                  actions: [
-                    assign({
-                      internalDrag: ({event}) => ({
-                        origin: event.origin,
-                      }),
-                    }),
-                  ],
-                  target: 'dragging internally',
-                },
-              },
-            },
-            'focusing': {
-              initial: 'checking if busy',
-              states: {
-                'checking if busy': {
-                  entry: [
-                    () => {
-                      debug.state(
-                        'entry: edit mode->editable->focusing->checking if busy',
-                      )
-                    },
-                  ],
-                  exit: [
-                    () => {
-                      debug.state(
-                        'exit: edit mode->editable->focusing->checking if busy',
-                      )
-                    },
-                  ],
-                  always: [
-                    {
-                      guard: 'slate is busy',
-                      target: 'busy',
-                    },
-                    {
-                      target: '#editor.edit mode.editable.idle',
-                      actions: ['handle focus'],
-                    },
-                  ],
-                },
-                'busy': {
-                  entry: [
-                    () => {
-                      debug.state('entry: edit mode->editable->focusing-busy')
-                    },
-                  ],
-                  exit: [
-                    () => {
-                      debug.state('exit: edit mode->editable->focusing->busy')
-                    },
-                  ],
-                  after: {
-                    10: {
-                      target: 'checking if busy',
-                    },
-                  },
-                },
-              },
-            },
-            'dragging internally': {
-              entry: [
-                () => {
-                  debug.state('entry: edit mode->editable->dragging internally')
-                },
-              ],
-              exit: [
-                () => {
-                  debug.state('exit: edit mode->editable->dragging internally')
-                },
-                ({context}) => {
-                  if (context.dragGhost) {
-                    try {
-                      context.dragGhost.parentNode?.removeChild(
-                        context.dragGhost,
-                      )
-                    } catch (error) {
-                      console.error(
-                        new Error(
-                          `Removing the drag ghost failed due to: ${error instanceof Error ? error.message : error}`,
-                        ),
-                      )
-                    }
-                  }
-                },
-                assign({dragGhost: undefined}),
-                assign({internalDrag: undefined}),
-              ],
-              tags: ['dragging internally'],
-              on: {
-                dragend: {target: 'idle'},
-                drop: {target: 'idle'},
-              },
-            },
-          },
+          states: createEditableSubstates('editable'),
         },
         'suggesting': {
           on: {
@@ -662,120 +675,7 @@ export const editorMachine = setup({
             },
           },
           initial: 'idle',
-          states: {
-            'idle': {
-              entry: [
-                () => {
-                  debug.state('entry: edit mode->suggesting->idle')
-                },
-              ],
-              exit: [
-                () => {
-                  debug.state('exit: edit mode->suggesting->idle')
-                },
-              ],
-              on: {
-                dragstart: {
-                  actions: [
-                    assign({
-                      internalDrag: ({event}) => ({
-                        origin: event.origin,
-                      }),
-                    }),
-                  ],
-                  target: 'dragging internally',
-                },
-              },
-            },
-            'focusing': {
-              initial: 'checking if busy',
-              states: {
-                'checking if busy': {
-                  entry: [
-                    () => {
-                      debug.state(
-                        'entry: edit mode->suggesting->focusing->checking if busy',
-                      )
-                    },
-                  ],
-                  exit: [
-                    () => {
-                      debug.state(
-                        'exit: edit mode->suggesting->focusing->checking if busy',
-                      )
-                    },
-                  ],
-                  always: [
-                    {
-                      guard: 'slate is busy',
-                      target: 'busy',
-                    },
-                    {
-                      target: '#editor.edit mode.suggesting.idle',
-                      actions: ['handle focus'],
-                    },
-                  ],
-                },
-                'busy': {
-                  entry: [
-                    () => {
-                      debug.state(
-                        'entry: edit mode->suggesting->focusing->busy',
-                      )
-                    },
-                  ],
-                  exit: [
-                    () => {
-                      debug.state('exit: edit mode->suggesting->focusing->busy')
-                    },
-                  ],
-                  after: {
-                    10: {
-                      target: 'checking if busy',
-                    },
-                  },
-                },
-              },
-            },
-            'dragging internally': {
-              entry: [
-                () => {
-                  debug.state(
-                    'entry: edit mode->suggesting->dragging internally',
-                  )
-                },
-              ],
-              exit: [
-                () => {
-                  debug.state(
-                    'exit: edit mode->suggesting->dragging internally',
-                  )
-                },
-                ({context}) => {
-                  if (context.dragGhost) {
-                    try {
-                      context.dragGhost.parentNode?.removeChild(
-                        context.dragGhost,
-                      )
-                    } catch (error) {
-                      console.error(
-                        new Error(
-                          `Removing the drag ghost failed due to: ${error instanceof Error ? error.message : error}`,
-                        ),
-                      )
-                    }
-                  }
-                },
-                assign({dragGhost: undefined}),
-                assign({internalDrag: undefined}),
-              ],
-              tags: ['dragging internally'],
-              on: {
-                dragend: {target: 'idle'},
-                drop: {target: 'idle'},
-              },
-            },
-          },
+          states: createEditableSubstates('suggesting'),
         },
       },
     },

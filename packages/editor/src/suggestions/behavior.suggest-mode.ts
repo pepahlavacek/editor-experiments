@@ -11,6 +11,13 @@ import type {EditorSnapshot} from '../editor/editor-snapshot'
  *
  * These are events that would modify the document content.
  * Selection, focus, clipboard read, and history events pass through.
+ *
+ * INVARIANT: Suggest mode relies on all document mutations flowing through
+ * `raise()` to one of these event types. Abstract behaviors use `raise()` to
+ * decompose high-level events (e.g., `input.insertFromPaste` → `deserialize`
+ * → `insert.blocks`), and the final mutation event is caught here. If a
+ * behavior uses `execute()` to bypass the chain for a mutation event, suggest
+ * mode won't catch it and the document will be modified silently.
  */
 const MUTATION_EVENT_TYPES = new Set([
   // Text insertion
@@ -145,10 +152,23 @@ export function createSuggestModeBehavior(
   return defineBehavior({
     on: '*',
     guard: ({event, snapshot}) => {
-      // State machine is authoritative: check snapshot.context.suggesting first.
-      // Fall back to isActive() for backwards compatibility with consumers
-      // that haven't migrated to the state machine approach.
-      const active = snapshot.context.suggesting || config.isActive?.() === true
+      // State machine is authoritative when in suggesting mode.
+      // isActive() is ONLY consulted as a legacy fallback when the state
+      // machine is NOT in suggesting mode.
+      const stateMachineSuggesting = snapshot.context.suggesting
+      const legacyFlagActive =
+        !stateMachineSuggesting && config.isActive?.() === true
+
+      if (legacyFlagActive) {
+        console.warn(
+          'Suggest mode: isActive() returned true but the state machine is not in suggesting mode. ' +
+            'This causes snapshot.context.suggesting to report false while mutations are intercepted. ' +
+            'Migrate to editor.send({type: "update suggestMode", suggesting: true}) instead. ' +
+            'The isActive() option is deprecated and will be removed in a future major version.',
+        )
+      }
+
+      const active = stateMachineSuggesting || legacyFlagActive
       if (!active) return false
       if (!isMutationEvent(event)) return false
       return true
