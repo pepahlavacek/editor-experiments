@@ -1,12 +1,4 @@
 import {
-  Element,
-  Path,
-  Range,
-  type BaseRange,
-  type NodeEntry,
-  type Operation,
-} from 'slate'
-import {
   and,
   assign,
   fromCallback,
@@ -21,6 +13,14 @@ import {
 } from '../internal-utils/move-range-by-operation'
 import {slateRangeToSelection} from '../internal-utils/slate-utils'
 import {toSlateRange} from '../internal-utils/to-slate-range'
+import {
+  Element,
+  Path,
+  Range,
+  type BaseRange,
+  type NodeEntry,
+  type Operation,
+} from '../slate'
 import type {EditorSelection, RangeDecoration} from '../types/editor'
 import type {PortableTextSlateEditor} from '../types/slate-editor'
 import {isEmptyTextBlock} from '../utils'
@@ -332,13 +332,17 @@ export const rangeDecorationsMachine = setup({
         // reconciliation handler will re-resolve it after the batch completes.
         if (newRange !== null) {
           const rangeToUse = newRange || slateRange
-          // Update selection in place to preserve object identity for
-          // the pre-batch snapshot Map lookup during reconciliation.
-          decoratedRange.rangeDecoration.selection = slateRangeToSelection({
-            schema: context.schema,
-            editor: context.slateEditor,
-            range: rangeToUse,
-          })
+          // Only update selection for local ops. During remote batches,
+          // preserve the original selection for reconciliation to re-resolve
+          // from. Point.transform may produce wrong intermediate results
+          // without splitContext/mergeContext (e.g. paste-restructure ops).
+          if (!suppressCallback) {
+            decoratedRange.rangeDecoration.selection = slateRangeToSelection({
+              schema: context.schema,
+              editor: context.slateEditor,
+              range: rangeToUse,
+            })
+          }
           rangeDecorationState.push({
             ...rangeToUse,
             rangeDecoration: decoratedRange.rangeDecoration,
@@ -375,19 +379,26 @@ export const rangeDecorationsMachine = setup({
       for (const decoratedRange of context.slateEditor.decoratedRanges) {
         const {rangeDecoration} = decoratedRange
 
+        // Use the PRE-BATCH selection for re-resolution, not the current one.
+        // During remote batches, we no longer mutate rangeDecoration.selection
+        // (Change 1), so it should still be the original. But even if it were
+        // mutated by some other path, the pre-batch snapshot is the authoritative
+        // source for what the selection was before remote ops arrived.
+        const preBatch = preRanges.get(rangeDecoration)
+        const previousRange = preBatch?.range ?? null
+        const previousSelection = preBatch?.selection ?? null
+        const selectionForResolution =
+          previousSelection ?? rangeDecoration.selection
+
         // Re-resolve from EditorSelection keys against current document
         const freshSlateRange = toSlateRange({
           context: {
             schema: context.schema,
             value: context.slateEditor.value,
-            selection: rangeDecoration.selection,
+            selection: selectionForResolution,
           },
           blockIndexMap: context.slateEditor.blockIndexMap,
         })
-
-        const preBatch = preRanges.get(rangeDecoration)
-        const previousRange = preBatch?.range ?? null
-        const previousSelection = preBatch?.selection ?? null
 
         if (!Range.isRange(freshSlateRange)) {
           // Decoration can no longer be resolved in the document
@@ -426,21 +437,23 @@ export const rangeDecorationsMachine = setup({
           continue
         }
 
-        // Detect if the range changed during the batch
+        // Detect if the range changed during the batch.
+        // "Changed" means toSlateRange re-resolved to a DIFFERENT position than
+        // the pre-batch snapshot — indicating a structural change (split, merge,
+        // paste-restructure, block deletion, etc.).
         const changed =
           !previousRange || !Range.equals(previousRange, freshSlateRange)
 
-        let selectionComputed = false
-        let finalSelection: EditorSelection = null
-        let finalSlateRange = freshSlateRange
-
         if (changed) {
-          finalSelection = slateRangeToSelection({
+          // Structural change: use toSlateRange's re-resolved position.
+          // Point.transform may have produced wrong results without
+          // splitContext/mergeContext, so freshSlateRange is authoritative.
+          let finalSelection = slateRangeToSelection({
             schema: context.schema,
             editor: context.slateEditor,
             range: freshSlateRange,
           })
-          selectionComputed = true
+          let finalSlateRange = freshSlateRange
 
           const consumerSelection = rangeDecoration.onMoved?.({
             previousSelection,
@@ -466,25 +479,34 @@ export const rangeDecorationsMachine = setup({
               finalSlateRange = consumerSlateRange
             }
           }
-        }
 
-        // Lazy-compute: only run slateRangeToSelection for unchanged decorations
-        if (!selectionComputed) {
-          finalSelection = slateRangeToSelection({
+          rangeDecorationState.push({
+            ...finalSlateRange,
+            rangeDecoration: {
+              ...rangeDecoration,
+              selection: finalSelection,
+            },
+          })
+        } else {
+          // No structural change: Point.transform correctly tracked offset
+          // shifts during the batch (e.g. text insertions in the same span).
+          // toSlateRange re-resolved to the same position as pre-batch because
+          // it uses the original offsets literally (just clamped to text.length).
+          // Trust Point.transform's cached Slate range — it has the correct
+          // shifted offsets. Compute selection from it to keep in sync.
+          const cachedSelection = slateRangeToSelection({
             schema: context.schema,
             editor: context.slateEditor,
-            range: freshSlateRange,
+            range: decoratedRange,
+          })
+          rangeDecorationState.push({
+            ...decoratedRange,
+            rangeDecoration: {
+              ...rangeDecoration,
+              selection: cachedSelection,
+            },
           })
         }
-
-        // Update cached range to the final resolved value
-        rangeDecorationState.push({
-          ...finalSlateRange,
-          rangeDecoration: {
-            ...rangeDecoration,
-            selection: finalSelection,
-          },
-        })
       }
 
       context.slateEditor.decoratedRanges = rangeDecorationState
